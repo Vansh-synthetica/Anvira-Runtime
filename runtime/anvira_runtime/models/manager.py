@@ -215,8 +215,28 @@ class ModelManager:
             try:
                 await self.supervisor.start(spec.name)
             except RuntimeError as exc:
-                raise RuntimeApiError("model_start_failed", f"Model '{rec['id']}' failed to start: {exc}", 500,
-                                      hint="See `anvira runtime logs --service " + spec.name + "`.") from exc
+                if not info.get("gpu"):
+                    raise RuntimeApiError("model_start_failed", f"Model '{rec['id']}' failed to start: {exc}", 500,
+                                          hint="See `anvira runtime logs --service " + spec.name + "`.") from exc
+                # The CUDA backend would not start (old driver, no GPU access...). Fall back to the bundled CPU build.
+                self._log("WARNING", f"CUDA backend failed for '{rec['id']}' ({exc}); retrying on the CPU")
+                try:
+                    await self.supervisor.stop(spec.name)
+                except Exception:  # noqa: BLE001
+                    pass
+                self.supervisor.remove(spec.name)
+                spec, info = llama.build_launch(self.layout, self.config, rec, self.hardware(), self.layout.logs_dir, force_cpu=True)
+                info["fallback"] = "the GPU backend failed to start; running on the CPU"
+                self.last_backend_info = info
+                if spec is None:
+                    raise RuntimeApiError("model_start_failed", f"Model '{rec['id']}' failed to start on the GPU and no CPU backend was found.", 500,
+                                          hint="Run `anvira doctor`; update the NVIDIA driver or reinstall the runtime.") from exc
+                self.supervisor.add(spec)
+                try:
+                    await self.supervisor.start(spec.name)
+                except RuntimeError as exc2:
+                    raise RuntimeApiError("model_start_failed", f"Model '{rec['id']}' failed to start: {exc2}", 500,
+                                          hint="See `anvira runtime logs --service " + spec.name + "`.") from exc2
         finally:
             self._loading_id = None
 

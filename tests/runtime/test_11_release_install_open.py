@@ -224,7 +224,7 @@ def test_missing_release_and_unconfigured_repo_are_clear_errors(gh, env, tmp_pat
         release.install_from_github(tmp_path / "x", repo="acme/does-not-exist", env=env)
     assert e.value.code == "release_not_found"
     with pytest.raises(AnviraError) as e:
-        release.install_from_github(tmp_path / "x", env={**env, "ANVIRA_RUNTIME_REPO": ""})
+        release.install_from_github(tmp_path / "x", env={**env, "ANVIRA_RUNTIME_REPO": "OWNER/Anvira-Runtime"})
     assert e.value.code == "repo_not_configured"
 
 

@@ -29,7 +29,7 @@ from .errors import AnviraError
 from .paths import runtime_dirs
 
 # Rewritten by scripts/publish.ps1 once the GitHub repository exists; ANVIRA_RUNTIME_REPO overrides it.
-DEFAULT_REPO = "OWNER/Anvira-Runtime"
+DEFAULT_REPO = "Vansh-synthetica/Anvira-Runtime"
 MIN_CUDA_DRIVER = (525, 0)
 UPDATE_LOCK = ".updating"
 Status = Callable[[str], None]

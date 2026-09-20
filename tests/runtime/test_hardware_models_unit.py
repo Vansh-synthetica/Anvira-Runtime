@@ -349,3 +349,50 @@ def test_download_http_error_and_cancel(tmp_path):
     with pytest.raises(DownloadCancelled):
         asyncio.run(download_file("http://x/m", tmp_path / "n.gguf", transport=range_transport(), cancel=ev, chunk_size=10))
     assert not (tmp_path / "n.gguf").exists()
+
+
+def test_force_cpu_never_offloads_even_on_a_big_gpu(tmp_path, fake_llama):
+    lay = resolve_layout({"ANVIRA_RUNTIME_HOME": str(tmp_path / "h")}, "linux").ensure()
+    cfg = RuntimeConfig.load(lay)
+    cfg.set("models.llama_server_path", str(fake_llama))
+    m = tmp_path / "m.gguf"
+    make_gguf(m)
+    hw = {"gpu": {"backend": "cuda", "vram_total_mib": 24000, "vram_free_mib": 20000}, "cpu": {"optimal_threads": 8}}
+    spec, info = backend.build_launch(lay, cfg, {"id": "m", "path": str(m)}, hw, lay.logs_dir, force_cpu=True)
+    assert "-ngl" not in spec.argv and info["gpu"] is False
+
+
+def test_a_failing_cuda_backend_falls_back_to_the_cpu_build(tmp_path, fake_llama, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from anvira_runtime.models.manager import ModelManager
+    lay = resolve_layout({"ANVIRA_RUNTIME_HOME": str(tmp_path / "h")}, "linux").ensure()
+    cfg = RuntimeConfig.load(lay)
+    m = tmp_path / "m.gguf"
+    make_gguf(m)
+    hw = {"gpu": {"backend": "cuda", "vram_total_mib": 24000, "vram_free_mib": 20000}, "cpu": {"optimal_threads": 8}}
+    started, logs = [], []
+
+    class Sup:
+        services: dict = {}
+
+        def add(self, spec):
+            started.append(("add", "-ngl" in spec.argv))
+
+        async def start(self, name):
+            if started[-1][1]:                       # the first (GPU) attempt dies, like an old NVIDIA driver
+                raise RuntimeError("cudaGetDeviceCount failed")
+
+        async def stop(self, name):
+            pass
+
+        def remove(self, name):
+            pass
+    mgr = ModelManager.__new__(ModelManager)
+    mgr.layout, mgr.config, mgr.supervisor, mgr._log, mgr._loading_id, mgr.last_backend_info = lay, cfg, Sup(), lambda lv, msg: logs.append((lv, msg)), None, {}
+    mgr.hardware = lambda: hw
+    cfg.set("models.llama_server_path", str(fake_llama))
+    asyncio.run(mgr._load({"id": "m", "path": str(m)}))
+    assert started == [("add", True), ("add", False)]                                # GPU first, then CPU
+    assert "CPU" in mgr.last_backend_info["fallback"] and any("retrying on the CPU" in msg for _, msg in logs)

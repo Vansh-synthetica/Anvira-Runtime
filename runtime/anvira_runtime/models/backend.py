@@ -100,14 +100,14 @@ def pick_context(meta: dict | None, free_vram_mib: int | None, requested: int | 
 
 
 def build_launch(layout: RuntimeLayout, config: RuntimeConfig, model: dict[str, Any],
-                 hardware: dict[str, Any], logs_dir: Path) -> tuple[ServiceSpec | None, dict[str, Any]]:
+                 hardware: dict[str, Any], logs_dir: Path, force_cpu: bool = False) -> tuple[ServiceSpec | None, dict[str, Any]]:
     """Build the llama-server ServiceSpec for ``model``. Returns (spec|None, info).
 
     ``spec`` is None when no binary can be found; ``info['error']`` says why.
     """
     gpu = hardware.get("gpu", {})
     gpu_mode = config.get("models.gpu")
-    cuda_ok = gpu.get("backend") == "cuda" and bool(gpu.get("vram_total_mib")) and gpu_mode != "off"
+    cuda_ok = gpu.get("backend") == "cuda" and bool(gpu.get("vram_total_mib")) and gpu_mode != "off" and not force_cpu
     binary, variant, searched = find_llama_server(layout, config, prefer_cuda=cuda_ok)
     info: dict[str, Any] = {"binary": str(binary) if binary else None, "variant": variant, "searched": searched}
     if binary is None:

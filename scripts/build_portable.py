@@ -9,9 +9,9 @@ Produces, in ``--out``:
                                            (extracted over the core; the installer fetches it only on NVIDIA machines).
     manifest.json + SHA256SUMS              what the installer reads to choose and verify assets.
 
-Size work (all lossless for what the runtime uses): stdlib as one compiled zip without tests/Tk/IDLE/ensurepip; dependencies
+Size work (lossless for what runs): stdlib as one compiled zip without the CPython test suite/Tk/IDLE (unittest, venv, ensurepip are kept); dependencies
 without tests/type stubs/pythonwin/bytecode; the 17 MB vendored Qwen-Agent tree (never imported) left out; llama.cpp reduced
-to what ``llama-server`` loads, with the rarely useful legacy CPU variants dropped (the loader falls back to a compatible one).
+to what ``llama-server`` loads, with every CPU variant kept (the loader picks the best one for the machine) and the Microsoft VC++ runtime DLLs shipped beside it.
 """
 from __future__ import annotations
 
@@ -32,8 +32,10 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "sdk" / "python"))
 from anvira_client.bootstrap import _SKIP_DIRS, _SKIP_SUFFIXES  # noqa: E402
 
-PY_SKIP_LIB = {"test", "tests", "idlelib", "tkinter", "turtledemo", "turtle.py", "lib2to3", "ensurepip", "site-packages",
-               "distutils", "pydoc_data", "__pycache__", "venv", "msilib", "unittest", "__phello__", "xxlimited"}
+# Only things a user (or an ORCHA agent running "python -m unittest", "python -m venv", "pip") never needs are dropped: the CPython test suite,
+# IDLE, Tk (needs the 10 MB Tcl/Tk DLLs) and turtle demos. unittest, venv and ensurepip (which bootstraps pip) are KEPT.
+PY_SKIP_LIB = {"test", "tests", "idlelib", "tkinter", "turtledemo", "turtle.py", "lib2to3", "site-packages", "__pycache__",
+               "__phello__", "xxlimited"}
 PY_SKIP_DLL = ("tcl", "tk", "_tkinter", "_test", "_ctypes_test", "xxlimited", "_testbuffer", "_testimportmultiple",
                "_testmultiphase", "_testsinglephase", "_testinternalcapi", "_testclinic")
 PKG_SKIP_DIRS = {"__pycache__", "tests", "test", "pythonwin", "win32comext", "bin", "testing_data", ".pytest_cache"}
@@ -41,7 +43,7 @@ PKG_SKIP_FILES = (".pyc", ".pyo", ".pyi")
 SERVICE_PRUNE = {"Orcha": ["orcha/integrations/Qwen-Agent-0.0.26"], "nomi": [], "AICL": ["core-rust", "core-cpp"]}
 # llama.cpp files that llama-server actually needs (tools like llama-cli/bench/quantize are dropped)
 LLAMA_KEEP = re.compile(r"^(llama-server(\.exe|-impl\.dll)|llama-common\.dll|llama\.dll|mtmd\.dll|ggml(-base|-rpc)?\.dll|"
-                        r"ggml-cuda\.dll|ggml-cpu-(x64|sse42|haswell|skylakex|icelake|alderlake|zen4)\.dll|"
+                        r"ggml-cuda\.dll|ggml-cpu-[\w]+\.dll|"
                         r"libomp[\w.]*\.dll|cudart64_\d+\.dll|cublas(Lt)?64_\d+\.dll|LICENSE[\w.-]*|.*\.txt)$", re.I)
 NOTICE = """Anvira Runtime - third-party components bundled in this package
 
@@ -51,6 +53,7 @@ NOTICE = """Anvira Runtime - third-party components bundled in this package
 * CUDA GPU pack only: NVIDIA CUDA runtime libraries cudart / cublas / cublasLt, redistributed under the NVIDIA CUDA Toolkit
   EULA "Attachment A" redistributable terms. Requires an NVIDIA driver that supports CUDA 12.
 * LLVM OpenMP runtime (libomp) under the LLVM license.
+* Microsoft Visual C++ runtime DLLs (msvcp140, vcruntime140, vcomp140 ...) redistributed as Microsoft "distributable code" so a clean PC needs no separate install.
 No AI models are included; models are downloaded only when the user asks.
 """
 LAUNCHER = r"""@echo off
@@ -170,6 +173,25 @@ def copy_llama(src: Path, dst: Path) -> int:
     return n
 
 
+VC_RUNTIME = ("msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "vcruntime140.dll", "vcruntime140_1.dll", "vcomp140.dll", "concrt140.dll")
+
+
+def bundle_vc_runtime(*dirs: Path) -> int:
+    """llama-server, ggml and the CUDA backend import the Microsoft VC++ runtime. A clean PC may not have it, so ship it beside them.
+
+    These DLLs are Microsoft "distributable code" (Visual C++ Redistributable) and are copied from this machine's System32."""
+    src = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
+    n = 0
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        for name in VC_RUNTIME:
+            if (src / name).is_file():
+                shutil.copy2(src / name, d / name)
+                n += 1
+    return n
+
+
 def zip_tree(root: Path, out: Path, only: Path | None = None, exclude: Path | None = None) -> None:
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         base = only or root
@@ -213,6 +235,8 @@ def main() -> int:
     cuda_dir = stage / "bin" / "llama-cpp" / "cuda"
     if a.llama_cuda:
         counts["cuda"] = copy_llama(Path(a.llama_cuda), cuda_dir)
+    vc = bundle_vc_runtime(stage / "bin" / "llama-cpp" / "cpu", cuda_dir, stage / "python")
+    print(f"    VC++ runtime DLLs bundled: {vc} copies")
     (stage / "anvira.cmd").write_text(LAUNCHER, encoding="ascii")
     (stage / "NOTICE.txt").write_text(NOTICE, encoding="utf-8")
     (stage / "README.txt").write_text(

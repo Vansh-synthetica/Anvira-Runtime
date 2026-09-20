@@ -193,7 +193,7 @@ export async function startRuntime({ env = process.env, timeoutMs = 90000, onSta
 // ------------------------------------------------- locate / register / GitHub install
 const UPDATE_LOCK = '.updating'
 /** Rewritten by scripts/publish.ps1 once the GitHub repository exists; ANVIRA_RUNTIME_REPO overrides it. */
-export const DEFAULT_REPO = 'OWNER/Anvira-Runtime'
+export const DEFAULT_REPO = 'Vansh-synthetica/Anvira-Runtime'
 const MIN_CUDA_DRIVER = 525
 
 export function defaultHome(env = process.env) { return runtimeDirs(env, process.platform, { ignorePointer: true }).home }

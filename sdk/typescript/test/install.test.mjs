@@ -132,7 +132,7 @@ test('a corrupt download is discarded and nothing is installed', async () => {
     await assert.rejects(installFromGithub({ dest: path.join(dir, 'dest'), env }), (e) => e.code === 'checksum_mismatch')
     assert.ok(!fs.existsSync(path.join(dir, 'dest', 'python')) && !fs.existsSync(path.join(dir, 'dest', '.updating')))
     await assert.rejects(installFromGithub({ dest: path.join(dir, 'dest'), env, repo: 'acme/nope' }), (e) => e.code === 'release_not_found')
-    await assert.rejects(installFromGithub({ dest: path.join(dir, 'dest'), env: { ...env, ANVIRA_RUNTIME_REPO: '' } }), (e) => e.code === 'repo_not_configured')
+    await assert.rejects(installFromGithub({ dest: path.join(dir, 'dest'), env: { ...env, ANVIRA_RUNTIME_REPO: 'OWNER/Anvira-Runtime' } }), (e) => e.code === 'repo_not_configured')
   } finally { await gh.close() }
 })
 
