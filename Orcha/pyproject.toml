@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orcha"
+version = "0.3.0"
+description = "Local-first multi-model orchestration — run every local LLM in parallel and synthesize one refined answer."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "LocalHouseLLM" }]
+keywords = ["orchestration", "llm", "multi-model", "local", "ollama", "ai", "experts"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = ["pydantic>=2.5,<3", "langgraph>=1.0"]
+
+[project.optional-dependencies]
+# Core local-model support
+local  = ["httpx>=0.27"]
+# Web UI + REST API
+api    = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "httpx>=0.27"]
+# YAML config files
+config = ["PyYAML>=6.0"]
+# Batch evaluation via ragas (LLM-graded scoring)
+eval   = ["ragas>=0.2"]
+# Lang ecosystem: langchain framework (langgraph itself is a core dep — the
+# default execution engine)
+lang   = ["langchain>=1.0", "langchain-core>=1.0"]
+# Deep Agents: primary high-level agent harness
+agents = ["deepagents>=0.1"]
+# Phoenix / OpenTelemetry developer observability (Apache-2.0 exporter
+# packages only; the ELv2 Phoenix server is external and never bundled)
+obs    = ["arize-phoenix-otel>=0.1", "openinference-instrumentation>=0.1"]
+# Development / testing
+dev    = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27", "fastapi>=0.110"]
+# Everything
+all    = ["httpx>=0.27", "fastapi>=0.110", "uvicorn[standard]>=0.29", "PyYAML>=6.0"]
+
+[project.urls]
+Homepage = "https://github.com/LocalHouseLLM/orcha01"
+
+[tool.setuptools.packages.find]
+include = ["orcha*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+norecursedirs = ["vendor", "dist", "build", "*.egg-info", ".venv", ".build-venv", "node_modules"]

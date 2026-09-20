@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# Rust
+core-rust/target/
+
+# C++
+core-cpp/build/
+native-cpp/build/
+
+# Locally-generated self-signed TLS cert for the HTTPS benchmark
+# (see benchmarks/https_vs_binary/gen_cert.py — regenerate, don't ship a key)
+benchmarks/https_vs_binary/*.pem

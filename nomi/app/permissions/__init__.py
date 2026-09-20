@@ -1,0 +1,2 @@
+"""Permissions module extension point."""
+

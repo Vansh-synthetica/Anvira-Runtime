@@ -1,0 +1,2 @@
+"""Audit module extension point."""
+

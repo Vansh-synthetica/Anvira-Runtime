@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "localhousellm-aicl"
+version = "0.1.0"
+description = "AICL — Adaptive Inter-Module Communication Language. A compact binary wire protocol for AI-module-to-AI-module communication: typed packets, streaming decode, and a semantic layer for model intents/actions."
+readme = "README.md"
+license = { text = "MPL-2.0" }
+requires-python = ">=3.10"
+authors = [{ name = "Vansh Bukkarwal — LocalHouseLLM Project" }]
+keywords = ["protocol", "wire-format", "ai-agents", "interop", "codec", "binary"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/LocalHouseLLM/AICL"
+Repository = "https://github.com/LocalHouseLLM/AICL"
+
+[tool.setuptools.packages.find]
+include = ["aicl*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

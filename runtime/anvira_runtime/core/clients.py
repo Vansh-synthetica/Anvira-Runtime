@@ -1,0 +1,199 @@
+"""HTTP clients the runtime uses to talk to the services it supervises.
+
+Applications never use these: they hold ORCHA's token and a Nomi session,
+both of which stay inside the runtime.
+"""
+from __future__ import annotations
+
+import asyncio
+import re
+from typing import Any, AsyncIterator
+
+import httpx
+
+from ..process.infra import NOMI_EMAIL, NOMI_USERNAME
+from .errors import RuntimeApiError, service_unavailable
+
+
+def _orcha_error(resp: httpx.Response) -> RuntimeApiError:
+    try:
+        body = resp.json()
+    except ValueError:
+        body = {}
+    err = body.get("error") if isinstance(body, dict) else None
+    if isinstance(err, dict):
+        return RuntimeApiError(f"orcha_{err.get('type', 'error')}", err.get("message") or "ORCHA request failed",
+                               resp.status_code if resp.status_code >= 400 else 502,
+                               details={"trace_id": err.get("trace_id")})
+    detail = body.get("detail") if isinstance(body, dict) else None
+    return RuntimeApiError("orcha_error", str(detail or resp.text[:200] or "ORCHA request failed"),
+                           resp.status_code if resp.status_code >= 400 else 502)
+
+
+class OrchaClient:
+    """Async client for ORCHA's ``/v1`` API (token-authenticated)."""
+
+    def __init__(self, get_base_url, token: str, transport: httpx.AsyncBaseTransport | None = None):
+        self._base = get_base_url
+        self._headers = {"X-Orcha-Token": token}
+        self._http = httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=None), transport=transport)
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def _request(self, method: str, path: str, *, json: Any = None, timeout: float | None = 30.0) -> Any:
+        base = self._base()
+        if not base:
+            raise service_unavailable("orcha", "It is not running.")
+        try:
+            resp = await self._http.request(method, base + path, json=json, headers=self._headers,
+                                            timeout=timeout)
+        except httpx.ConnectError as exc:
+            raise service_unavailable("orcha", "Connection refused.") from exc
+        except httpx.TimeoutException as exc:
+            raise RuntimeApiError("orcha_timeout", "ORCHA did not respond in time.", 504) from exc
+        if resp.status_code >= 400:
+            raise _orcha_error(resp)
+        return resp.json() if resp.content else {}
+
+    async def health(self) -> dict[str, Any]:
+        return await self._request("GET", "/v1/health", timeout=5.0)
+
+    async def experts(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/v1/experts")
+
+    async def start_run(self, body: dict[str, Any]) -> dict[str, Any]:
+        return await self._request("POST", "/v1/run", json={**body, "stream": True})
+
+    async def run_sync(self, body: dict[str, Any], timeout: float) -> dict[str, Any]:
+        return await self._request("POST", "/v1/run", json={**body, "stream": False}, timeout=timeout)
+
+    async def get_run(self, run_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/v1/run/{run_id}")
+
+    async def cancel_run(self, run_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/v1/run/{run_id}/cancel")
+
+    async def list_runs(self) -> dict[str, Any]:
+        return await self._request("GET", "/v1/runs")
+
+    async def events(self, run_id: str) -> AsyncIterator[bytes]:
+        """Raw SSE bytes of ORCHA's event stream for a run (passed through unchanged)."""
+        base = self._base()
+        if not base:
+            raise service_unavailable("orcha", "It is not running.")
+        async with self._http.stream("GET", f"{base}/v1/run/{run_id}/events", headers=self._headers,
+                                     timeout=httpx.Timeout(30.0, read=None)) as resp:
+            if resp.status_code >= 400:
+                await resp.aread()
+                raise _orcha_error(resp)
+            async for chunk in resp.aiter_raw():
+                yield chunk
+
+    # -- model registration (the runtime keeps ORCHA pointed at the active model) --------
+    async def local_models(self) -> list[dict[str, Any]]:
+        return (await self._request("GET", "/v1/local-models")).get("models", [])
+
+    async def set_primary_model(self, model: str, base_url: str, api_key: str | None = None,
+                                label: str | None = None) -> dict[str, Any]:
+        return await self._request("POST", "/v1/local-model", timeout=60.0,
+                                   json={"model": model, "base_url": base_url, "api_key": api_key, "label": label})
+
+    async def remove_model(self, model: str) -> None:
+        try:
+            await self._request("DELETE", f"/v1/local-models/{model}", timeout=60.0)
+        except RuntimeApiError as exc:
+            if exc.status != 404:
+                raise
+
+
+class NomiClient:
+    """Async client for Nomi; owns one runtime service account.
+
+    The account credentials are generated by the runtime, stored in its
+    secrets file, and never given to applications. Application separation is
+    enforced by the runtime through per-app tags (see ``core.memory``).
+    """
+
+    def __init__(self, get_base_url, password: str, transport: httpx.AsyncBaseTransport | None = None):
+        self._base = get_base_url
+        self._password = password
+        self._token: str | None = None
+        self._lock = asyncio.Lock()
+        self._http = httpx.AsyncClient(timeout=20.0, transport=transport)
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    def reset(self) -> None:
+        self._token = None
+
+    async def health(self) -> dict[str, Any]:
+        base = self._base()
+        if not base:
+            raise service_unavailable("nomi", "It is not running.")
+        try:
+            resp = await self._http.get(f"{base}/health", timeout=5.0)
+        except httpx.HTTPError as exc:
+            raise service_unavailable("nomi", type(exc).__name__) from exc
+        resp.raise_for_status()
+        return resp.json()
+
+    async def _login(self) -> str:
+        base = self._base()
+        if not base:
+            raise service_unavailable("nomi", "It is not running.")
+        creds = {"email": NOMI_EMAIL, "password": self._password}
+        try:
+            resp = await self._http.post(f"{base}/api/v1/auth/login", json=creds)
+            if resp.status_code in (401, 404):
+                resp = await self._http.post(f"{base}/api/v1/auth/register",
+                                             json={**creds, "username": NOMI_USERNAME})
+        except httpx.HTTPError as exc:
+            raise service_unavailable("nomi", type(exc).__name__) from exc
+        if resp.status_code >= 400:
+            raise RuntimeApiError("nomi_auth_failed", f"Could not sign in to Nomi ({resp.status_code}): "
+                                  f"{_detail(resp)}", 502,
+                                  hint="If Nomi's data was created by another runtime install, remove "
+                                       "<runtime data>/nomi or restore the matching secrets.json.")
+        return resp.json()["access_token"]
+
+    async def request(self, method: str, path: str, *, params: dict | None = None, json: Any = None) -> Any:
+        base = self._base()
+        if not base:
+            raise service_unavailable("nomi", "It is not running.")
+        for attempt in (1, 2):
+            async with self._lock:
+                if self._token is None:
+                    self._token = await self._login()
+                token = self._token
+            try:
+                resp = await self._http.request(method, f"{base}/api/v1{path}", params=params, json=json,
+                                                headers={"Authorization": f"Bearer {token}"})
+            except httpx.HTTPError as exc:
+                raise service_unavailable("nomi", type(exc).__name__) from exc
+            if resp.status_code == 401 and attempt == 1:
+                self._token = None  # expired; sign in again
+                continue
+            if resp.status_code >= 400:
+                raise RuntimeApiError("nomi_error", f"Nomi: {_detail(resp)}",
+                                      404 if resp.status_code == 404 else 502)
+            return resp.json() if resp.content else {}
+        raise RuntimeApiError("nomi_auth_failed", "Nomi rejected the runtime's credentials.", 502)
+
+
+def _detail(resp: httpx.Response) -> str:
+    try:
+        body = resp.json()
+    except ValueError:
+        return resp.text[:200]
+    if isinstance(body, dict):
+        return str(body.get("message") or body.get("detail") or body.get("error") or body)[:300]
+    return str(body)[:300]
+
+
+_SAFE = re.compile(r"[^a-z0-9._:-]")
+
+
+def safe_tag(value: str) -> str:
+    return _SAFE.sub("-", value.lower())[:60]

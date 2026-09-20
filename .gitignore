@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+.build-venv/
+node_modules/
+dist/
+build/
+*.egg-info/
+*.gguf
+*.log
+.pytest_cache/
+# binaries ship as release assets, never in git
+bin/
+*.dll
+*.exe
+*.zip

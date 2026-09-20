@@ -1,0 +1,2 @@
+"""Memory module extension point."""
+

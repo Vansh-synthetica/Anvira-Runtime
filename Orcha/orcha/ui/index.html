@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orcha — Local Multi-Model Orchestration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Tokens ──────────────────────────────────────────────────── */
+:root {
+  --bg:       #0e1117;
+  --s1:       #161b26;
+  --s2:       #1e2535;
+  --s3:       #242d3f;
+  --border:   #2a3348;
+  --text:     #e2e8f4;
+  --dim:      #7a8aa0;
+  --accent:   #5b8af0;   /* blue  */
+  --green:    #34c77b;   /* pass  */
+  --amber:    #f5a623;   /* mid   */
+  --red:      #e05454;   /* fail  */
+  --synth:    #b07ef8;   /* synthesis purple */
+  --c-general:   #7a8aa0;
+  --c-reasoning: #b07ef8;
+  --c-finance:   #f5a623;
+  --c-code:      #34c77b;
+  --c-science:   #5b8af0;
+  --c-creative:  #e05454;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Space Grotesk', system-ui, sans-serif;
+  --r: 10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+a{color:var(--accent);}
+
+/* ── Layout ──────────────────────────────────────────────────── */
+header{
+  border-bottom:1px solid var(--border);
+  padding:22px 32px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+}
+.logo{font-weight:700;font-size:22px;letter-spacing:.03em;display:flex;align-items:center;gap:10px;}
+.logo .spark{color:var(--accent);}
+.logo .tag{font-size:11px;font-family:var(--mono);color:var(--dim);background:var(--s2);border:1px solid var(--border);padding:3px 8px;border-radius:99px;font-weight:400;}
+.status-row{display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11px;flex-wrap:wrap;}
+.pill{border:1px solid var(--border);border-radius:99px;padding:4px 10px;color:var(--dim);}
+.pill.live{border-color:var(--green);color:var(--green);}
+
+main{max-width:1220px;margin:0 auto;padding:28px 32px 80px;display:grid;grid-template-columns:280px 1fr;gap:24px;}
+@media(max-width:900px){main{grid-template-columns:1fr;}}
+
+/* ── Panels ──────────────────────────────────────────────────── */
+.panel{background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:20px;}
+.panel-title{font-size:11px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:14px;}
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+.sidebar{display:flex;flex-direction:column;gap:16px;}
+
+.model-card{
+  background:var(--s2);border:1px solid var(--border);border-radius:var(--r);
+  padding:12px 14px;transition:border-color .15s;
+}
+.model-card.selected{border-color:var(--accent);}
+.model-card .mc-name{font-family:var(--mono);font-size:12px;font-weight:500;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.model-card .mc-desc{font-size:12px;color:var(--dim);line-height:1.4;}
+.domain-badge{
+  display:inline-block;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em;
+  padding:2px 7px;border-radius:99px;margin-top:6px;border:1px solid;background:transparent;
+}
+.d-general  {color:var(--c-general);  border-color:var(--c-general);}
+.d-reasoning{color:var(--c-reasoning);border-color:var(--c-reasoning);}
+.d-finance  {color:var(--c-finance);  border-color:var(--c-finance);}
+.d-code     {color:var(--c-code);     border-color:var(--c-code);}
+.d-science  {color:var(--c-science);  border-color:var(--c-science);}
+.d-creative {color:var(--c-creative); border-color:var(--c-creative);}
+
+.synth-badge{
+  margin-top:6px;display:inline-flex;align-items:center;gap:4px;
+  font-size:10px;font-family:var(--mono);color:var(--synth);
+}
+
+/* ── How it works ────────────────────────────────────────────── */
+.how-row{display:flex;flex-direction:column;gap:6px;}
+.how-step{display:flex;align-items:flex-start;gap:10px;font-size:13px;}
+.how-step .n{
+  min-width:22px;height:22px;background:var(--s3);border:1px solid var(--border);
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:10px;color:var(--accent);flex-shrink:0;margin-top:1px;
+}
+.how-step p{color:var(--dim);font-size:12.5px;line-height:1.45;}
+.how-step p b{color:var(--text);}
+
+/* ── Main column ─────────────────────────────────────────────── */
+.main-col{display:flex;flex-direction:column;gap:20px;}
+
+/* ── Composer ────────────────────────────────────────────────── */
+.composer textarea{
+  width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);
+  color:var(--text);font-family:var(--sans);font-size:15px;padding:14px;resize:vertical;
+  min-height:90px;outline:none;transition:border-color .15s;
+}
+.composer textarea:focus{border-color:var(--accent);}
+.composer-footer{display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:14px;flex-wrap:wrap;}
+.run-btn{
+  background:var(--accent);color:#fff;border:none;border-radius:var(--r);
+  font-family:var(--sans);font-weight:600;font-size:15px;padding:11px 28px;cursor:pointer;
+  transition:box-shadow .15s,transform .1s;white-space:nowrap;
+}
+.run-btn:hover{box-shadow:0 0 0 3px rgba(91,138,240,.25);}
+.run-btn:active{transform:scale(.98);}
+.run-btn:disabled{opacity:.45;cursor:wait;}
+.opts{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--dim);align-items:center;}
+.opts label{display:flex;align-items:center;gap:6px;}
+.opts input[type=number]{
+  width:60px;background:var(--s2);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none;
+}
+.opts input[type=number]:focus{border-color:var(--accent);}
+.opts label.toggle{cursor:pointer;user-select:none;}
+.opts input[type=checkbox]{accent-color:var(--accent);}
+.examples{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;}
+.ex{background:none;border:1px dashed var(--border);border-radius:99px;padding:5px 12px;
+    color:var(--dim);font-size:12px;font-family:var(--sans);cursor:pointer;transition:color .12s,border-color .12s;}
+.ex:hover{color:var(--text);border-color:var(--accent);}
+
+/* ── Score (pipeline trace) ──────────────────────────────────── */
+.score-empty{
+  border:1px dashed var(--border);border-radius:var(--r);padding:28px;
+  text-align:center;color:var(--dim);font-family:var(--mono);font-size:13px;
+}
+.iter-block{margin-bottom:18px;}
+.iter-header{
+  font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--dim);margin-bottom:8px;display:flex;align-items:center;gap:8px;
+}
+.iter-header .sep{flex:1;height:1px;background:var(--border);}
+.stage-row{display:flex;align-items:flex-end;gap:6px;flex-wrap:wrap;min-height:54px;}
+.stage-chip{
+  background:var(--s2);border:1px solid var(--border);border-radius:8px;
+  padding:7px 10px;font-family:var(--mono);font-size:10.5px;color:var(--dim);
+  opacity:0;transform:translateY(5px);animation:chipIn .3s ease forwards;
+  display:flex;flex-direction:column;gap:2px;min-width:68px;
+}
+.stage-chip .s-label{font-size:9px;text-transform:uppercase;letter-spacing:.07em;}
+.stage-chip .s-val{color:var(--text);}
+.stage-chip.synth-chip{border-color:var(--synth);background:rgba(176,126,248,.06);}
+.stage-chip.synth-chip .s-val{color:var(--synth);}
+@keyframes chipIn{to{opacity:1;transform:translateY(0);}}
+
+/* Expert bar chart inside score */
+.bars{display:flex;align-items:flex-end;gap:3px;height:54px;}
+.bar{
+  width:16px;border-radius:4px 4px 2px 2px;position:relative;
+  opacity:0;animation:chipIn .35s ease forwards;cursor:default;
+}
+.bar-tip{
+  position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);
+  background:#000d;color:var(--text);font-family:var(--mono);font-size:10px;
+  padding:4px 8px;border-radius:6px;white-space:nowrap;
+  opacity:0;pointer-events:none;transition:opacity .12s;z-index:10;
+}
+.bar:hover .bar-tip{opacity:1;}
+
+/* ── Answer panel ────────────────────────────────────────────── */
+.answer-panel{display:none;}
+.answer-panel.show{display:block;}
+.answer-mode{
+  display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;
+  padding:4px 10px;border-radius:99px;margin-bottom:12px;border:1px solid;
+}
+.answer-mode.synthesized{color:var(--synth);border-color:var(--synth);background:rgba(176,126,248,.08);}
+.answer-mode.best-of{color:var(--amber);border-color:var(--amber);background:rgba(245,166,35,.06);}
+.answer-box{
+  background:var(--s2);border:1px solid var(--border);border-radius:var(--r);
+  padding:18px;font-size:15px;white-space:pre-wrap;line-height:1.7;margin-bottom:16px;
+}
+.meta-row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;}
+.meta-item{font-family:var(--mono);font-size:11.5px;color:var(--dim);}
+.meta-item b{display:block;font-size:17px;color:var(--text);font-family:var(--sans);font-weight:600;margin-bottom:2px;}
+.conf-bar{height:7px;border-radius:99px;background:var(--s3);width:120px;overflow:hidden;margin-top:4px;}
+.conf-fill{height:100%;border-radius:99px;transition:width .6s ease;}
+
+.contributor-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+.contrib-chip{
+  font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:99px;
+  background:var(--s2);border:1px solid var(--border);color:var(--dim);
+}
+.contrib-chip.primary-chip{border-color:var(--accent);color:var(--accent);}
+.contrib-chip.synth-chip-small{border-color:var(--synth);color:var(--synth);}
+
+details.raw{margin-top:6px;}
+details.raw summary{cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--dim);padding:4px 0;}
+details.raw pre{
+  margin-top:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px;font-family:var(--mono);font-size:11px;color:var(--dim);
+  overflow-x:auto;max-height:300px;
+}
+
+/* ── Spinner ─────────────────────────────────────────────────── */
+.spin{
+  display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;animation:rot .6s linear infinite;vertical-align:-2px;margin-right:6px;
+}
+@keyframes rot{to{transform:rotate(360deg);}}
+
+footer{
+  border-top:1px solid var(--border);padding:18px 32px;text-align:center;
+  color:var(--dim);font-family:var(--mono);font-size:11px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="spark">◈</span> ORCHA
+    <span class="tag">v0.3 · local-first</span>
+  </div>
+  <div class="status-row">
+    <span class="pill" id="status-pill">connecting…</span>
+    <span class="pill" id="synth-pill">synthesizer: —</span>
+    <span class="pill"><a href="/docs" target="_blank" style="color:inherit;text-decoration:none;">API docs ↗</a></span>
+  </div>
+</header>
+
+<main>
+  <!-- ── Sidebar ────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Local models</div>
+      <div id="model-list"><div class="score-empty" style="padding:12px;font-size:12px;">loading…</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">How it works</div>
+      <div class="how-row">
+        <div class="how-step"><div class="n">1</div><p><b>Decompose</b> — break the query into subtasks, detect domain</p></div>
+        <div class="how-step"><div class="n">2</div><p><b>Select</b> — score every local model against the domain</p></div>
+        <div class="how-step"><div class="n">3</div><p><b>Execute</b> — run all selected models <b>concurrently</b></p></div>
+        <div class="how-step"><div class="n">4</div><p><b>Synthesize</b> — the largest local model reads every candidate answer and writes <b>one refined response</b></p></div>
+        <div class="how-step"><div class="n">5</div><p><b>Evaluate</b> — if confidence is low, <b>retry</b> with more models</p></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main column ─────────────────────────────────────────── -->
+  <div class="main-col">
+
+    <!-- Composer -->
+    <div class="panel composer">
+      <textarea id="q" placeholder="Ask anything — all your local models will answer in parallel, then Orcha synthesizes their answers into one."></textarea>
+      <div class="examples">
+        <button class="ex" data-q="Explain the risks and benefits of intermittent fasting from a metabolic standpoint.">metabolism & fasting</button>
+        <button class="ex" data-q="How should a developer think about migrating a monolith to microservices? What are the hidden traps?">monolith → microservices</button>
+        <button class="ex" data-q="Analyse the risk-reward tradeoff of investing a lump sum vs dollar-cost averaging during a bear market.">DCA vs lump-sum</button>
+        <button class="ex" data-q="Why is the sky blue? Explain from first principles, then also explain why sunsets are red.">sky colours</button>
+      </div>
+      <div class="composer-footer">
+        <button class="run-btn" id="run-btn">Run all models</button>
+        <div class="opts">
+          <label>iterations <input type="number" id="iters" value="2" min="1" max="5"></label>
+          <label class="toggle"><input type="checkbox" id="run-all" checked> run all models</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Score -->
+    <div class="panel">
+      <div class="panel-title">Pipeline trace</div>
+      <div id="score"><div class="score-empty">Run a query to see the execution trace — every stage, every model, every millisecond.</div></div>
+    </div>
+
+    <!-- Answer -->
+    <div class="panel answer-panel" id="answer-panel">
+      <div class="panel-title">Answer</div>
+      <div id="mode-badge"></div>
+      <div class="answer-box" id="answer-box"></div>
+      <div class="meta-row">
+        <div class="meta-item">Confidence<b id="m-conf">—</b><div class="conf-bar"><div class="conf-fill" id="m-cbar"></div></div></div>
+        <div class="meta-item">Iterations<b id="m-iters">—</b></div>
+        <div class="meta-item">Models used<b id="m-count">—</b></div>
+        <div class="meta-item">Latency<b id="m-lat">—</b></div>
+        <div class="meta-item">Est. cost<b id="m-cost">—</b></div>
+        <div class="meta-item">Domains<b id="m-domains">—</b></div>
+      </div>
+      <div class="contributor-row" id="contrib-row"></div>
+      <details class="raw"><summary>Raw JSON trace</summary><pre id="trace-pre"></pre></details>
+    </div>
+
+  </div>
+</main>
+
+<footer>Orcha is open-source. Add any local model with <code>OllamaExpert</code> or <code>LocalChatExpert</code>. No cloud API needed.</footer>
+
+<script>
+/* ── Helpers ───────────────────────────────────────────── */
+const domCls = d => 'd-' + (['general','reasoning','finance','code','science','creative'].includes(d) ? d : 'general');
+const confColor = c => c >= .8 ? 'var(--green)' : c >= .6 ? 'var(--amber)' : 'var(--red)';
+const fmt = (n, dec=2) => typeof n === 'number' ? n.toFixed(dec) : '—';
+
+/* ── Load expert roster ────────────────────────────────── */
+async function loadExperts() {
+  try {
+    const [expRes, hRes] = await Promise.all([fetch('/experts'), fetch('/health')]);
+    const experts = await expRes.json();
+    const health  = await hRes.json();
+
+    document.getElementById('status-pill').textContent = experts.length + ' models loaded';
+    document.getElementById('status-pill').classList.add('live');
+
+    const synth = health.synthesizer || '—';
+    document.getElementById('synth-pill').textContent = 'synthesizer: ' + synth;
+
+    const list = document.getElementById('model-list');
+    list.innerHTML = '';
+    experts.forEach(e => {
+      const card = document.createElement('div');
+      card.className = 'model-card';
+      const isSynth = e.name === synth;
+      card.innerHTML = `
+        <div class="mc-name">${e.name}</div>
+        <div class="mc-desc">${e.description}</div>
+        <span class="domain-badge ${domCls(e.domain)}">${e.domain}</span>
+        ${isSynth ? '<div class="synth-badge">◈ synthesizer</div>' : ''}
+      `;
+      list.appendChild(card);
+    });
+  } catch {
+    document.getElementById('status-pill').textContent = 'offline — start the server';
+    document.getElementById('model-list').innerHTML =
+      '<div class="score-empty" style="padding:12px;font-size:12px;">Server not reachable.<br>Run: uvicorn orcha.api.server:app --port 8420</div>';
+  }
+}
+
+/* ── Render pipeline trace ────────────────────────────── */
+function renderScore(trace) {
+  const container = document.getElementById('score');
+  container.innerHTML = '';
+
+  // Group: setup row (input + decompose), then one block per iteration
+  const groups = [];
+  let cur = null;
+  trace.forEach(s => {
+    if (s.stage === 'input' || s.stage === 'decompose') {
+      if (!cur) { cur = { label: 'setup', steps: [] }; groups.push(cur); }
+      cur.steps.push(s); return;
+    }
+    if (s.stage === 'plan') { cur = { label: 'iter', steps: [] }; groups.push(cur); }
+    if (!cur) { cur = { label: 'iter', steps: [] }; groups.push(cur); }
+    cur.steps.push(s);
+  });
+
+  let iterN = 0;
+  groups.forEach(g => {
+    const block = document.createElement('div');
+    block.className = 'iter-block';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'iter-header';
+    const label = g.label === 'setup' ? 'setup' : `iteration ${++iterN}`;
+    hdr.innerHTML = `<span>${label}</span><span class="sep"></span>`;
+    block.appendChild(hdr);
+
+    const row = document.createElement('div');
+    row.className = 'stage-row';
+    let delay = 0;
+
+    g.steps.forEach(s => {
+      if (s.stage === 'execute') {
+        const chip = document.createElement('div');
+        chip.className = 'stage-chip';
+        chip.style.animationDelay = delay + 'ms';
+        chip.innerHTML = `<span class="s-label">execute</span><span class="s-val">${fmt(s.duration_ms, 0)}ms</span>`;
+        row.appendChild(chip);
+
+        // Bar chart of expert scores
+        const scores = s.data.scores || {};
+        if (Object.keys(scores).length) {
+          const bars = document.createElement('div');
+          bars.className = 'bars';
+          Object.entries(scores).forEach(([name, score], i) => {
+            const bar = document.createElement('div');
+            bar.className = 'bar';
+            const h = Math.max(8, Math.round(score * 54));
+            bar.style.height = h + 'px';
+            bar.style.background = confColor(score);
+            bar.style.animationDelay = (delay + 80 + i * 50) + 'ms';
+            bar.innerHTML = `<span class="bar-tip">${name}<br>${fmt(score)} score</span>`;
+            bars.appendChild(bar);
+          });
+          row.appendChild(bars);
+        }
+        delay += 110; return;
+      }
+
+      if (s.stage === 'response') return; // skip — not interesting to show
+
+      const chip = document.createElement('div');
+      chip.className = 'stage-chip' + (s.stage === 'aggregate' && s.data.mode === 'synthesis' ? ' synth-chip' : '');
+      chip.style.animationDelay = delay + 'ms';
+
+      let val = fmt(s.duration_ms, 1) + 'ms';
+      if (s.stage === 'aggregate' && s.data.confidence !== undefined)
+        val += '  ' + (s.data.confidence * 100).toFixed(0) + '%';
+      if (s.stage === 'retry_decision')
+        val += s.data.retry ? '  ↻' : '  ✓';
+      if (s.stage === 'decompose' && s.data.domains)
+        val += '  ' + s.data.domains.join(',');
+
+      chip.innerHTML = `<span class="s-label">${s.stage.replace('_decision','')}</span><span class="s-val">${val}</span>`;
+      row.appendChild(chip);
+      delay += 80;
+    });
+
+    block.appendChild(row);
+    container.appendChild(block);
+  });
+}
+
+/* ── Render result ───────────────────────────────────────── */
+function renderResult(d) {
+  const panel = document.getElementById('answer-panel');
+  panel.classList.add('show');
+
+  const badge = document.getElementById('mode-badge');
+  if (d.synthesized) {
+    badge.innerHTML = '<span class="answer-mode synthesized">◈ synthesized from all models</span>';
+  } else {
+    badge.innerHTML = '<span class="answer-mode best-of">↑ best-of (confidence-weighted)</span>';
+  }
+
+  document.getElementById('answer-box').textContent = d.answer;
+
+  const pct = Math.round(d.confidence * 100);
+  document.getElementById('m-conf').textContent = pct + '%';
+  const fill = document.getElementById('m-cbar');
+  fill.style.width = pct + '%';
+  fill.style.background = confColor(d.confidence);
+
+  document.getElementById('m-iters').textContent   = d.iterations;
+  document.getElementById('m-count').textContent   = (d.contributors || []).length;
+  document.getElementById('m-lat').textContent     = fmt(d.latency_s) + 's';
+  document.getElementById('m-cost').textContent    = '$' + fmt(d.cost, 4);
+  document.getElementById('m-domains').textContent = (d.domains || []).join(', ') || '—';
+
+  const crow = document.getElementById('contrib-row');
+  crow.innerHTML = '';
+  (d.contributors || []).forEach(name => {
+    const c = document.createElement('span');
+    const isPrimary = name === d.primary;
+    const isSynth   = isPrimary && d.synthesized;
+    c.className = 'contrib-chip' + (isSynth ? ' synth-chip-small' : isPrimary ? ' primary-chip' : '');
+    c.textContent = (isSynth ? '◈ ' : isPrimary ? '★ ' : '') + name;
+    crow.appendChild(c);
+  });
+
+  document.getElementById('trace-pre').textContent = JSON.stringify(d.trace, null, 2);
+}
+
+/* ── Run ─────────────────────────────────────────────────── */
+async function run() {
+  const query = document.getElementById('q').value.trim();
+  if (!query) return;
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Running all models…';
+
+  document.getElementById('score').innerHTML =
+    '<div class="score-empty">Pipeline running — models executing in parallel…</div>';
+  document.getElementById('answer-panel').classList.remove('show');
+
+  // Highlight all model cards as "selected"
+  document.querySelectorAll('.model-card').forEach(c => c.classList.add('selected'));
+
+  try {
+    const res = await fetch('/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        max_iterations: parseInt(document.getElementById('iters').value) || 2,
+        run_all_experts: document.getElementById('run-all').checked,
+      })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    renderScore(data.trace);
+    renderResult(data);
+  } catch (err) {
+    document.getElementById('score').innerHTML =
+      `<div class="score-empty">Error: ${err.message}<br>Is the Orcha server running?</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run all models';
+    document.querySelectorAll('.model-card').forEach(c => c.classList.remove('selected'));
+  }
+}
+
+document.getElementById('run-btn').addEventListener('click', run);
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) run();
+});
+document.querySelectorAll('.ex').forEach(b => {
+  b.addEventListener('click', () => {
+    document.getElementById('q').value = b.dataset.q;
+    document.getElementById('q').focus();
+  });
+});
+
+loadExperts();
+</script>
+</body>
+</html>

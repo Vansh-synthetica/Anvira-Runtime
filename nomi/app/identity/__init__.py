@@ -1,0 +1,2 @@
+"""Identity module extension point."""
+

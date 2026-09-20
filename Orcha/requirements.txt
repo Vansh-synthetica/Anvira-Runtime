@@ -1,0 +1,34 @@
+# ── Core ──────────────────────────────────────────────────────────────────────
+pydantic>=2.5,<3
+# Default execution engine for agent / multi-agent / default graphs (the
+# native GraphRuntime stays available via engine="native")
+langgraph>=1.0
+
+# ── Local model backends ─────────────────────────────────────────────────────
+# Required for OllamaExpert and LocalChatExpert (llama.cpp, LM Studio, vLLM…)
+httpx>=0.27
+
+# ── Agent runtime: MCP client (stdio/SSE transports) ─────────────────────────
+# Optional at boot — imported lazily by orcha.agent_runtime.mcp transports.
+mcp>=1.2
+
+# ── Agent runtime: web tools (web_search, web_fetch) ──────────────────────────
+requests>=2.31
+beautifulsoup4>=4.12
+
+# ── Web UI + REST API ─────────────────────────────────────────────────────────
+fastapi>=0.110
+uvicorn[standard]>=0.29
+# fastapi 0.115.x is not compatible with starlette 1.x (mcp pulls unbounded
+# starlette; keep the pair that fastapi supports)
+starlette>=0.40,<0.42
+
+# ── YAML config files (LocalModelRegistry.from_config) ───────────────────────
+# PyYAML>=6.0    # uncomment if you use .yaml config files
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=8.0
+pytest-asyncio>=0.23
+
+# ── Optional: semantic routing / decomposition ────────────────────────────────
+# sentence-transformers>=2.2   # uncomment to enable use_embeddings=True

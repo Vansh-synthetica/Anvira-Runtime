@@ -1,0 +1,243 @@
+﻿
+=== 1. Where is the runtime, and is it healthy? ==========================
+found             yes
+location          C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime
+how               env
+version           1.0.0
+running           no
+GPU pack          no
+default location  C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime
+Anvira doctor - runtime 1.0.0
+
+✓ Python interpreter: Python 3.12.10 at C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime\python\python.exe
+✓ Runtime installation: Installed (marker: 1.0.0) at C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime
+✓ Runtime directories: All runtime directories are writable.
+✓ Configuration: Loaded C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime\config\config.json
+✓ Model storage: 8.0 GiB free at C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime\models
+✓ ORCHA installation: source: C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime\services\orcha
+✓ ORCHA Python dependencies: All required packages are importable.
+✓ Nomi installation: source: C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime\services\nomi
+✓ Nomi Python dependencies: All required packages are importable.
+✓ AICL: Found at C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime\services\aicl; native Rust core: not built (in-process Python codec is used)
+▲ Runtime process: The runtime is not running.
+    fix: Start it with `anvira runtime start`.
+✓ API port: Port 47615 is available.
+• Hardware: 12th Gen Intel(R) Core(TM) i5-12500H | 15.7 GiB RAM | NVIDIA GeForce RTX 3050 Laptop GPU (4.0 GiB VRAM, cuda)
+✓ Inference backend: llama-server (cuda) at C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime\bin\llama-cpp\cuda\llama-server.exe
+
+13 ok, 1 warnings, 0 failures
+
+=== 2. Start it, see it ====================================================
+cli_demo.cmd : Starting runtime...
+At line:4 char:1
++ & .\cli_demo.cmd "D:\New folder (6)\MODELS" qwen2.5-coder-3b-instruct ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Starting runtime...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Runtime started (pid 22360, port 47615).
+Anvira Runtime 1.0.0 (API v1)  ● running   pid 22360   up 9s
+
+Services
+  ORCHA  ● running  port 59082
+  Nomi   ● running  port 59079
+  AICL   ● running  in-process bus
+
+Model  none selected - `anvira model list` / `anvira model use <id>`
+Jobs   none
+Mode   persistent (runs until `anvira runtime stop`); apps open: none
+Apps   0 registered
+Home   C:\Users\DELL\AppData\Local\Temp\claude\D--New-folder--6--ANVIRA-RUNTIME\33146952-71d2-4af6-8eb3-21cedf672d7b\scratchpad\rt3\Anvira Runtime
+platform      windows amd64 (11)
+cpu           12th Gen Intel(R) Core(TM) i5-12500H (16 logical cores)
+ram           15.7 GiB total, 5.8 GiB free
+gpu           NVIDIA GeForce RTX 3050 Laptop GPU - 4.0 GiB VRAM
+cuda          -
+accelerators  cuda, cpu
+models disk   8.0 GiB free
+
+=== 3. Models: put them anywhere, the runtime remembers ====================
+D:\New folder (6)\MODELS
+ID                                  NAME                                                                    TYPE   SIZE       STATE      FITS   
+qwen2.5-0.5b-instruct-fp16          Qwen__Qwen2.5-0.5B-Instruct-GGUF__qwen2.5-0.5b-instruct-fp16            local  1.2 GiB    installed  GPU    
+qwen2.5-1.5b-instruct.iq1_m         MaziyarPanahi__Qwen2.5-1.5B-Instruct-GGUF__Qwen2.5-1.5B-Instruct.IQ1_M  local  442.9 MiB  installed  GPU    
+qwen2.5-7b-instruct.iq1_m           MaziyarPanahi__Qwen2.5-7B-Instruct-GGUF__Qwen2.5-7B-Instruct.IQ1_M      local  1.9 GiB    installed  GPU    
+qwen2.5-coder-1.5b-instruct-q4_k_m  qwen2.5-coder-1.5b-instruct-q4_k_m                                      local  1.0 GiB    installed  GPU    
+qwen2.5-coder-3b-instruct-q4_k_m    qwen2.5-coder-3b-instruct-q4_k_m                                        local  2.0 GiB    installed  GPU    
+qwen2.5-coder-7b-instruct-q4_k_m    qwen2.5-coder-7b-instruct-q4_k_m                                        local  4.4 GiB    installed  GPU+CPU
+ID                                NAME                       SIZE     RUNS ON      INSTALLED
+qwen3-4b                          Qwen3 4B                   2.3 GiB  gpu          no       
+llama-3.2-3b                      Llama 3.2 3B Instruct      1.9 GiB  gpu          no       
+qwen3-1.7b                        Qwen3 1.7B                 2.0 GiB  gpu          no       
+qwen3-8b                          Qwen3 8B                   4.7 GiB  partial-gpu  no       
+qwen2.5-coder-7b-instruct-q4_k_m  Qwen2.5 Coder 7B Instruct  4.4 GiB  partial-gpu  yes      
+
+=== 4. Apps and permissions ================================================
+No applications registered yet. Apps register themselves when they first connect.
+● idle                 models     no active model
+● idle                 chat       needs an active model
+● running              orcha      orchestration jobs, agents
+● running              agents     workspace-scoped agent runs (ORCHA)
+● running              memory     Nomi; app-private or shared
+● idle                 context    opens on first use
+● idle                 resources  {'opened': False, 'resources': 0, 'grants': 0}
+● running              aicl       in-process bus
+Notes, Study and Code experiences live in the applications, not in the runtime.
+
+=== 5. Shared data between apps (private by default) =======================
+Created res_8ff427f059ea (runtime://res_8ff427f059ea); private to anvira-notes until you share it.
+Demo note  res_8ff427f059ea  [document]  owner=anvira-notes  private
+Demo note res_8ff427f059ea/content  score 0.863
+  The Calvin cycle fixes carbon dioxide using RuBisCO.
+21:07:40  user           search   -                which enzyme fixes carbon dioxide (1 resources)
+21:07:39  user           create   res_8ff427f059ea text:document:Demo note
+
+=== 6. The dashboard pages (one frame each) ===============================
+ Anvira Runtime 1.0.0  ● running   up 17s   model: none    apps: 0                                            
+  1 Overview    2 Health    3 Models    4 Apps & data    5 Logs     Tab = next page                           
+┌─ Services & model ──────────────────────────────────┐┌─ Jobs ──────────────────────────────────────────────┐
+│ ● ORCHA  running   port 59082                       ││ no jobs yet - try:  run explain what a mutex is     │
+│ ● Nomi   running   port 59079                       ││                                                     │
+│ ● AICL   running   in-process bus                   ││                                                     │
+│                                                     ││                                                     │
+│ model   none  none                                  ││                                                     │
+│ models  6 installed   dir cratchpad\rt3\Anvira Runti││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+└─────────────────────────────────────────────────────┘└─────────────────────────────────────────────────────┘
+┌─ Activity  (ORCHA events, AICL bus, runtime log) ──────────────────────────────────────────────────────────┐
+│log  INFO 'nomi' ready pid=15364 port=59079                                                                 │
+│log  INFO 'orcha' ready pid=13544 port=59082                                                                │
+│log  INFO runtime started                                                                                   │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output ───────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Welcome to Anvira Runtime.  This is a live view of ORCHA, Nomi, AICL and your models.                       │
+│No model selected.  Type  models  to see what is installed, then  use <id>.                                 │
+│Pages: press Tab (or 1-5) for Health, Models, Apps & data, Logs.  Type  help  for every command,  quit  to l│
+│The runtime stops by itself shortly after the last app closes.                                              │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ anvira> _                                                                                                    
+ Tab pages | help | run <task> | chat <msg> | models | use <id> | jobs | cancel <id> | logs | quit            
+ Anvira Runtime 1.0.0  ● running   up 17s   model: none    apps: 0                                            
+  1 Overview    2 Health    3 Models    4 Apps & data    5 Logs     Tab = next page                           
+┌─ Checkups ──────────────────────────────────────────┐┌─ Hardware, backend & services ──────────────────────┐
+│ 16 ok   1 warnings   0 failures        r = re-run   ││ CPU   12th Gen Intel(R) Core(TM) i5-12500H          │
+│                                                     ││       12 cores / 16 threads                         │
+│ ok   Python interpreter: Python 3.12.10 at C:\Users\││ RAM   5.8 GiB free of 15.7 GiB                      │
+│ ok   Runtime installation: Installed (marker: 1.0.0)││ GPU   NVIDIA GeForce RTX 3050 Laptop GPU            │
+│ ok   Runtime directories: All runtime directories ar││       3.9 GiB free of 4.0 GiB VRAM  driver 616.56   │
+│ ok   Configuration: Loaded C:\Users\DELL\AppData\Loc││ disk  8.0 GiB free where models are stored          │
+│ ok   Model storage: 8.0 GiB free at C:\Users\DELL\Ap││                                                     │
+│ ok   ORCHA installation: source: C:\Users\DELL\AppDa││ services                                            │
+│ ok   ORCHA Python dependencies: All required package││  ● orcha  running   restarts 0                      │
+│ ok   Nomi installation: source: C:\Users\DELL\AppDat││  ● nomi   running   restarts 0                      │
+│ ok   Nomi Python dependencies: All required packages││  ● aicl   running   restarts 0                      │
+│ ok   AICL: Found at C:\Users\DELL\AppData\Local\Temp││                                                     │
+│ ok   Runtime process: Running: 1.0.0 (API v1) on por││ model  none  ● none                                 │
+│ ok   Version compatibility: Runtime 1.0.0 / API v1 (││                                                     │
+│ info Hardware: 12th Gen Intel(R) Core(TM) i5-12500H ││                                                     │
+│ ok   ORCHA: Running on port 59082 (restarts: 0)     ││                                                     │
+│ ok   Nomi: Running on port 59079 (restarts: 0)      ││                                                     │
+│ ok   AICL bus: In-process bus running.              ││                                                     │
+│ warn Models: 6 model(s) installed but none is select││                                                     │
+└─────────────────────────────────────────────────────┘└─────────────────────────────────────────────────────┘
+┌─ Output ───────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Welcome to Anvira Runtime.  This is a live view of ORCHA, Nomi, AICL and your models.                       │
+│No model selected.  Type  models  to see what is installed, then  use <id>.                                 │
+│Pages: press Tab (or 1-5) for Health, Models, Apps & data, Logs.  Type  help  for every command,  quit  to l│
+│The runtime stops by itself shortly after the last app closes.                                              │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ anvira> _                                                                                                    
+ Tab next page | r refresh | help | run <task> | chat <msg> | use <id> | logs <svc> | quit                    
+ Anvira Runtime 1.0.0  ● running   up 19s   model: none    apps: 0                                            
+  1 Overview    2 Health    3 Models    4 Apps & data    5 Logs     Tab = next page                           
+┌─ Installed models ──────────────────────────────────┐┌─ This machine ──────────────────────────────────────┐
+│   model                                      size  r││ CPU   12th Gen Intel(R) Core(TM) i5-12500H          │
+│   qwen2.5-0.5b-instruct-fp16              1.2 GiB  G││       12 cores / 16 threads                         │
+│   qwen2.5-1.5b-instruct.iq1_m             0.4 GiB  G││ RAM   5.7 GiB free of 15.7 GiB                      │
+│   qwen2.5-7b-instruct.iq1_m               1.9 GiB  G││ GPU   NVIDIA GeForce RTX 3050 Laptop GPU            │
+│   qwen2.5-coder-1.5b-instruct-q4_k_m      1.0 GiB  G││       3.9 GiB free of 4.0 GiB VRAM  driver 616.56   │
+│   qwen2.5-coder-3b-instruct-q4_k_m        2.0 GiB  G││ disk  8.0 GiB free where models are stored          │
+│   qwen2.5-coder-7b-instruct-q4_k_m        4.4 GiB  G││                                                     │
+│                                                     ││ folder  672d7b\scratchpad\rt3\Anvira Runtime\models │
+│                                                     ││         D:\New folder (6)\MODELS                    │
+│                                                     ││                                                     │
+│                                                     ││ use <id>             switch the active model        │
+│                                                     ││ anvira model install   download one (asks first)    │
+│                                                     ││ anvira model compat    will it fit this PC?         │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+└─────────────────────────────────────────────────────┘└─────────────────────────────────────────────────────┘
+┌─ Output ───────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Welcome to Anvira Runtime.  This is a live view of ORCHA, Nomi, AICL and your models.                       │
+│No model selected.  Type  models  to see what is installed, then  use <id>.                                 │
+│Pages: press Tab (or 1-5) for Health, Models, Apps & data, Logs.  Type  help  for every command,  quit  to l│
+│The runtime stops by itself shortly after the last app closes.                                              │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ anvira> _                                                                                                    
+ Tab next page | r refresh | help | run <task> | chat <msg> | use <id> | logs <svc> | quit                    
+ Anvira Runtime 1.0.0  ● running   up 20s   model: none    apps: 0                                            
+  1 Overview    2 Health    3 Models    4 Apps & data    5 Logs     Tab = next page                           
+┌─ Connected apps ────────────────────────────────────┐┌─ Lifecycle, shared data & capabilities ─────────────┐
+│ No app has connected yet.                           ││ mode     persistent                                 │
+│                                                     ││ open     0 app(s) holding the runtime,  busy: 0     │
+│ Anvira, Anvira Notes, Anvira Study and Anvira Dev   ││                                                     │
+│ register themselves the first time they open.       ││ shared data  1 resources   private 1  shared 0  glob│
+│                                                     ││                                                     │
+│                                                     ││ ● models     idle                                   │
+│                                                     ││ ● chat       idle                                   │
+│                                                     ││ ● orcha      running                                │
+│                                                     ││ ● agents     running                                │
+│                                                     ││ ● memory     running                                │
+│                                                     ││ ● context    idle                                   │
+│                                                     ││ ● resources  active                                 │
+│                                                     ││ ● aicl       running                                │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+│                                                     ││                                                     │
+└─────────────────────────────────────────────────────┘└─────────────────────────────────────────────────────┘
+┌─ Output ───────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Welcome to Anvira Runtime.  This is a live view of ORCHA, Nomi, AICL and your models.                       │
+│No model selected.  Type  models  to see what is installed, then  use <id>.                                 │
+│Pages: press Tab (or 1-5) for Health, Models, Apps & data, Logs.  Type  help  for every command,  quit  to l│
+│The runtime stops by itself shortly after the last app closes.                                              │
+│                                                                                                            │
+│                                                                                                            │
+│                                                                                                            │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ anvira> _                                                                                                    
+ Tab next page | r refresh | help | run <task> | chat <msg> | use <id> | logs <svc> | quit                    
+
+=== 7. Use a model (pass its id as the 2nd argument) ======================
+Selecting qwen2.5-coder-3b-instruct-q4_k_m (loading the model can take a while)...
+Active model: qwen2.5-coder-3b-instruct-q4_k_m  ● running
+A hash map is a data structure that stores key-value pairs and uses hash functions to efficiently access and retrieve values based on the keys.
+Started job_a77c6347b9d9  (anvira orcha jobs / anvira job get job_a77c6347b9d9)
+JOB               KIND       APP    STATE    AGE
+job_a77c6347b9d9  orcha.run  owner  running  0s 
+
+=== 8. Stop (apps normally do this by themselves when they close) =========
+Runtime stopped.
+Done. Try the live dashboard:   anvira open

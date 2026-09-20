@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "note": "Curated starting points. Sizes are approximate (the downloader uses the real Content-Length). `anvira model search` queries Hugging Face live for anything else.",
+  "models": [
+    {
+      "id": "qwen3-1.7b", "name": "Qwen3 1.7B", "family": "qwen3", "params_b": 1.7, "quantization": "Q8_0",
+      "size_bytes": 2170000000, "context_length": 32768, "tags": ["chat", "small", "cpu-friendly"],
+      "source": {"type": "huggingface", "repo": "Qwen/Qwen3-1.7B-GGUF", "file": "Qwen3-1.7B-Q8_0.gguf"}
+    },
+    {
+      "id": "qwen3-4b", "name": "Qwen3 4B", "family": "qwen3", "params_b": 4.0, "quantization": "Q4_K_M",
+      "size_bytes": 2500000000, "context_length": 32768, "tags": ["chat", "reasoning", "cpu-friendly"],
+      "source": {"type": "huggingface", "repo": "Qwen/Qwen3-4B-GGUF", "file": "Qwen3-4B-Q4_K_M.gguf"}
+    },
+    {
+      "id": "qwen3-8b", "name": "Qwen3 8B", "family": "qwen3", "params_b": 8.0, "quantization": "Q4_K_M",
+      "size_bytes": 5030000000, "context_length": 32768, "tags": ["chat", "reasoning", "general"],
+      "source": {"type": "huggingface", "repo": "Qwen/Qwen3-8B-GGUF", "file": "Qwen3-8B-Q4_K_M.gguf"}
+    },
+    {
+      "id": "qwen2.5-coder-7b", "name": "Qwen2.5 Coder 7B Instruct", "family": "qwen2.5-coder", "params_b": 7.0,
+      "quantization": "Q4_K_M", "size_bytes": 4680000000, "context_length": 32768, "tags": ["chat", "coding"],
+      "source": {"type": "huggingface", "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF", "file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf"}
+    },
+    {
+      "id": "llama-3.2-3b", "name": "Llama 3.2 3B Instruct", "family": "llama-3.2", "params_b": 3.0,
+      "quantization": "Q4_K_M", "size_bytes": 2020000000, "context_length": 131072, "tags": ["chat", "small", "cpu-friendly"],
+      "source": {"type": "huggingface", "repo": "bartowski/Llama-3.2-3B-Instruct-GGUF", "file": "Llama-3.2-3B-Instruct-Q4_K_M.gguf"}
+    }
+  ]
+}
