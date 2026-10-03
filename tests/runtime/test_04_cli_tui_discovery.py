@@ -10,6 +10,7 @@ import pytest
 from anvira_client import AnviraError, bootstrap
 from anvira_runtime.cli import tui
 from anvira_runtime.cli.main import build_parser, main as cli
+from anvira_runtime.version import RUNTIME_VERSION
 from conftest import wait_for
 from fakes import FAKE_GGUF
 
@@ -54,10 +55,10 @@ def test_subcommand_help_and_invalid_usage(capsys):
 def test_version_flag_and_command(capsys, runtime):
     with pytest.raises(SystemExit):
         cli(["--version"])
-    assert "anvira 1.0.0" in capsys.readouterr().out
+    assert f"anvira {RUNTIME_VERSION}" in capsys.readouterr().out
     code, out, _ = run_cli(capsys, "version", "--json")
     d = json.loads(out)
-    assert code == 0 and d["cli"] == "1.0.0" and d["runtime"]["running"] and d["runtime"]["api_version"] == 1
+    assert code == 0 and d["cli"] == RUNTIME_VERSION and d["runtime"]["running"] and d["runtime"]["api_version"] == 1
 
 
 # ---------------------------------------------------------------- runtime missing

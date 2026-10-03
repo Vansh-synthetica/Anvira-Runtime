@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anvira-runtime"
-version = "1.0.0"
+version = "1.0.1"
 description = "Anvira Runtime - shared local intelligence runtime (ORCHA + Nomi + AICL) with a local API, CLI and SDK."
 requires-python = ">=3.10"
 dependencies = [

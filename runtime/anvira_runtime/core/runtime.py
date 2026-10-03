@@ -35,6 +35,8 @@ from .memory import MemoryService
 from .resources import ResourceService
 
 GRAPHS = ("default", "research", "multi_agent")
+_LLAMA_ONLY_OPTIONS = ("top_k", "min_p", "typical_p", "repeat_penalty", "repeat_last_n", "dry_multiplier", "dry_base",
+                       "dry_allowed_length", "dry_penalty_last_n", "chat_template_kwargs", "json_schema", "cache_prompt")
 _NOTHING_RELEVANT = ("The user's own notes and documents contain NOTHING relevant to this question. "
                      "Do not answer it from general knowledge. Reply only: I could not find that in your notes.")
 # What an agent gets when the app does not choose: read/write/search files inside its workspace roots. Anything that can run
@@ -515,6 +517,11 @@ class RuntimeCore:
         upstream = {k: v for k, v in body.items() if k in (
             "temperature", "top_p", "max_tokens", "stop", "seed", "presence_penalty", "frequency_penalty",
             "response_format", "tools", "tool_choice")}
+        # llama.cpp's own samplers (anti-repetition, DRY) and template switches (enable_thinking): what keeps sub-1B models
+        # out of loops and out of a hidden thinking phase. Only for llama-server on this machine — an OpenAI-style cloud
+        # API rejects fields it does not know.
+        if not self.is_remote(target):
+            upstream.update({k: v for k, v in body.items() if k in _LLAMA_ONLY_OPTIONS})
         upstream.update({"model": target["model"], "messages": messages, "stream": bool(body.get("stream"))})
         target = {**target, "memories_used": [m["id"] for m in used], "context_used": ctx_used, "warnings": warnings}
         return target, upstream

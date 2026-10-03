@@ -35,3 +35,12 @@ Not triggered by questions, single files, edits, or paths that would escape the 
 * The fake browser is a stub, not Chrome: it catches crashes and dead loops, not visual bugs or subtle gameplay logic.
 * Node is optional; without it the script check falls back to static checks.
 * Nomi recall is word-based (BM25), not semantic.
+
+## llama.cpp sampling options through `/v1/chat` (1.0.1)
+
+Sub-1B models (Qwen2.5 0.5B, Qwen3 0.6B) loop, and Qwen3 spends most of every answer in a hidden thinking phase. Apps can now
+pass llama.cpp's own options with a chat request: `top_k`, `min_p`, `typical_p`, `repeat_penalty`, `repeat_last_n`, the DRY
+sampler (`dry_multiplier`, `dry_base`, `dry_allowed_length`, `dry_penalty_last_n`), `chat_template_kwargs` (for example
+`{"enable_thinking": false}`), `json_schema` and `cache_prompt`. They reach local llama-server models only; a request to a
+cloud provider drops them, because OpenAI-style APIs reject fields they do not know. Anvira Notes 1.2.3 uses them for its
+small-model mode (thinking off: Qwen3 0.6B answers in ~0.7 s instead of ~3 s; DRY + repeat penalty stop runaway loops).

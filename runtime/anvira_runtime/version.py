@@ -6,7 +6,7 @@ version of ORCHA / Nomi / AICL that happens to sit behind the runtime.
 from __future__ import annotations
 
 #: Semantic version of the runtime distribution (daemon + CLI + API).
-RUNTIME_VERSION = "1.0.0"
+RUNTIME_VERSION = "1.0.1"
 
 #: Major version of the HTTP API. Bumped only on breaking API changes.
 #: All routes live under ``/v{API_VERSION}``.

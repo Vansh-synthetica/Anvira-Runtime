@@ -9,6 +9,7 @@ import pytest
 from anvira_client import AnviraRuntime, bootstrap
 from anvira_client.discovery import probe
 from anvira_client.paths import runtime_dirs
+from anvira_runtime.version import RUNTIME_VERSION
 from conftest import REPO
 
 pytestmark = pytest.mark.slow
@@ -55,8 +56,8 @@ def test_first_app_installs_only_after_the_user_agrees(installed_env):
     assert len(prompts) == 1 and prompts[0]["installed"] is False
     assert any("Installing" in s for s in status) and "Starting runtime..." in status
     rec = json.loads((home / "install.json").read_text())
-    assert rec["version"] == "1.0.0" and Path(rec["entry"]).exists() and rec["os"] and rec["arch"]
-    assert app.health()["status"] == "ok" and app.info.runtime_version == "1.0.0"
+    assert rec["version"] == RUNTIME_VERSION and Path(rec["entry"]).exists() and rec["os"] and rec["arch"]
+    assert app.health()["status"] == "ok" and app.info.runtime_version == RUNTIME_VERSION
 
     # installed layout: private venv, infrastructure copied, no tests/vendor bloat, no models downloaded
     for name in ("orcha", "nomi", "aicl"):
@@ -87,7 +88,7 @@ def test_later_apps_share_the_installed_runtime(installed_env):
 def test_install_is_idempotent_and_update_replaces_an_older_runtime(installed_env):
     home = Path(installed_env["ANVIRA_RUNTIME_HOME"])
     same = bootstrap.install_runtime(source=str(REPO), env=installed_env)
-    assert same["version"] == "1.0.0"                                                        # nothing to do
+    assert same["version"] == RUNTIME_VERSION                                                        # nothing to do
     marker = home / "install.json"
     rec = json.loads(marker.read_text())
     rec["version"] = "0.9.0"                                                                 # pretend an older runtime is installed
@@ -95,13 +96,13 @@ def test_install_is_idempotent_and_update_replaces_an_older_runtime(installed_en
     said = []
     old_pid = probe(installed_env).pid
     updated = bootstrap.install_runtime(source=str(REPO), env=installed_env, on_status=said.append)
-    assert updated["version"] == "1.0.0" and any("Stopping the running runtime" in s for s in said)
+    assert updated["version"] == RUNTIME_VERSION and any("Stopping the running runtime" in s for s in said)
     now = probe(installed_env)
     # stopped for the update. Apps that are still open may bring it back on the NEW files afterwards - never before, never the old process
     assert not now.running or now.pid != old_pid
     assert not bootstrap.release.update_in_progress(installed_env)                          # the update lock is always released
     app = AnviraRuntime.connect("anvira-notes", env=installed_env)                            # existing app token still works
-    assert app.info.runtime_version == "1.0.0" and app.health()["status"] == "ok"
+    assert app.info.runtime_version == RUNTIME_VERSION and app.health()["status"] == "ok"
 
 
 def test_incompatible_runtime_is_reported_to_the_app(installed_env):
