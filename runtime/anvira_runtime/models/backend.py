@@ -1,9 +1,16 @@
 """llama.cpp ``llama-server`` backend: discovery, launch flags, GPU offload.
 
 Behaviour ported from Anvira's ``electron/llamaServer.cjs``: same flags
-(``--jinja``, ``-np 1``, flash-attention + q8_0 KV cache on CUDA, ``-b 512``),
-same empirically-calibrated GPU-layer fill (82% of total VRAM on cards up to
+(``--jinja``, flash-attention + q8_0 KV cache on CUDA, ``-b 512``), same
+empirically-calibrated GPU-layer fill (82% of total VRAM on cards up to
 6 GiB, 90% above), same 4096-token context floor.
+
+Unlike the old launcher it serves several requests at once: ``-np N`` slots
+over one unified KV pool (``--kv-unified``), so an app generating a quiz in
+parallel chunks, or a chat running while autocomplete fires, is batched by
+the server instead of queued behind a single slot. With a unified pool every
+slot may use the whole context, so a long prompt never gets less room than
+it had with one slot.
 """
 from __future__ import annotations
 
@@ -99,6 +106,19 @@ def pick_context(meta: dict | None, free_vram_mib: int | None, requested: int | 
     return 4096
 
 
+def pick_parallel(use_cuda: bool, ctx: int, requested: int | None) -> int:
+    """Server slots. Requested wins; otherwise 4 on a GPU with a 16k+ pool, 2 with 8k+, else 1.
+
+    Slots share one unified KV pool, so the pool must hold several typical prompts at
+    once; below 8k tokens that is not guaranteed and a single slot is the safe choice.
+    """
+    if requested:
+        return max(1, min(8, requested))
+    if ctx >= 16384 and use_cuda:
+        return 4
+    return 2 if ctx >= 8192 else 1
+
+
 def build_launch(layout: RuntimeLayout, config: RuntimeConfig, model: dict[str, Any],
                  hardware: dict[str, Any], logs_dir: Path, force_cpu: bool = False) -> tuple[ServiceSpec | None, dict[str, Any]]:
     """Build the llama-server ServiceSpec for ``model``. Returns (spec|None, info).
@@ -117,9 +137,15 @@ def build_launch(layout: RuntimeLayout, config: RuntimeConfig, model: dict[str, 
     path = Path(model["path"])
     meta = gguf.read_metadata(path)
     use_cuda = cuda_ok and variant in ("cuda", "custom", "unknown")
-    ctx = pick_context(meta, gpu.get("vram_free_mib") if use_cuda else None, config.get("models.context_size"))
+    requested_ctx = config.get("models.context_size")
+    ctx = pick_context(meta, gpu.get("vram_free_mib") if use_cuda else None, requested_ctx)
+    if not use_cuda and not requested_ctx:
+        # On the CPU the KV cache lives in system RAM, where 8k tokens of a small model is a few hundred MiB:
+        # cheap room for two prompts at once instead of one.
+        ctx = max(ctx, 8192)
     layers = compute_gpu_layers(path, gpu.get("vram_total_mib") or 0, ctx, meta) if use_cuda else 0
     use_cuda = use_cuda and layers > 0
+    parallel = pick_parallel(use_cuda, ctx, config.get("models.parallel"))
 
     threads = hardware.get("cpu", {}).get("optimal_threads") or 4
     if use_cuda:
@@ -128,15 +154,18 @@ def build_launch(layout: RuntimeLayout, config: RuntimeConfig, model: dict[str, 
     argv = [str(binary), "-m", str(path), "--host", "127.0.0.1", "--port", str(port), "--jinja", "-c", str(ctx)]
     if use_cuda:
         argv += ["-ngl", str(layers), "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0"]
-    argv += ["-np", "1", "-t", str(threads), "-b", "512"]
+    argv += ["-np", str(parallel)]
+    if parallel > 1:
+        argv += ["--kv-unified"]   # every slot may use the full context; without it each gets ctx / np
+    argv += ["-t", str(threads), "-b", "512"]
 
-    info.update({"port": port, "context": ctx, "gpu_layers": layers if use_cuda else 0,
+    info.update({"port": port, "context": ctx, "gpu_layers": layers if use_cuda else 0, "parallel": parallel,
                  "gpu": use_cuda, "threads": threads, "architecture": (meta or {}).get("architecture")})
     spec = ServiceSpec(
         name=f"model:{model['id']}", argv=argv, cwd=str(binary.parent), log_path=logs_dir / f"model-{model['id']}.log",
         port=port, health_url=f"http://127.0.0.1:{port}/health", ready_timeout_s=600.0, restart=True,
         kind="model", meta={"model_id": model["id"], "context": ctx, "gpu_layers": info["gpu_layers"],
-                            "variant": variant})
+                            "parallel": parallel, "variant": variant})
     return spec, info
 
 

@@ -39,6 +39,7 @@ DEFAULTS: dict[str, Any] = {
         "discover_apps": True,        # find models already downloaded by Anvira / Notes / Study / Dev
         "autostart_active": True,     # start the active model with the runtime
         "context_size": None,         # None = pick automatically
+        "parallel": None,             # llama-server slots; None = pick automatically (1, 2 or 4)
         "gpu": "auto",                # auto | off | on
         "llama_server_path": None,    # explicit llama-server binary
         "huggingface_endpoint": "https://huggingface.co",
@@ -71,7 +72,7 @@ _NULLABLE_STR = {
     "services.nomi.source_dir", "services.nomi.executable", "services.python",
     "models.models_dir", "models.llama_server_path",
 }
-_NULLABLE_INT = {"models.context_size"}
+_NULLABLE_INT = {"models.context_size", "models.parallel"}
 
 
 class ConfigError(ValueError):

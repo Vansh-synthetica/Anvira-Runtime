@@ -396,3 +396,35 @@ def test_a_failing_cuda_backend_falls_back_to_the_cpu_build(tmp_path, fake_llama
     asyncio.run(mgr._load({"id": "m", "path": str(m)}))
     assert started == [("add", True), ("add", False)]                                # GPU first, then CPU
     assert "CPU" in mgr.last_backend_info["fallback"] and any("retrying on the CPU" in msg for _, msg in logs)
+
+
+def test_parallel_slots_share_one_kv_pool(tmp_path, fake_llama):
+    lay = resolve_layout({"ANVIRA_RUNTIME_HOME": str(tmp_path / "h")}, "linux").ensure()
+    cfg = RuntimeConfig.load(lay)
+    cfg.set("models.llama_server_path", str(fake_llama))
+    m = tmp_path / "m.gguf"
+    make_gguf(m)
+    rec = {"id": "m", "path": str(m)}
+    arg = lambda a, flag: a[a.index(flag) + 1]
+
+    # CPU: the pool grows to 8k so two prompts fit at once, and the slots share it
+    spec, info = backend.build_launch(lay, cfg, rec, {"gpu": {}, "cpu": {"optimal_threads": 8}}, lay.logs_dir)
+    assert arg(spec.argv, "-c") == "8192" and arg(spec.argv, "-np") == "2" and "--kv-unified" in spec.argv
+    assert info["parallel"] == 2 and spec.meta["parallel"] == 2
+
+    # big GPU pool: four slots
+    hw_gpu = {"gpu": {"backend": "cuda", "vram_total_mib": 24000, "vram_free_mib": 20000}, "cpu": {"optimal_threads": 8}}
+    spec, info = backend.build_launch(lay, cfg, rec, hw_gpu, lay.logs_dir)
+    assert arg(spec.argv, "-np") == "4" and "--kv-unified" in spec.argv
+
+    # a small pinned context keeps the old single slot, without the unified flag
+    cfg.set("models.context_size", "4096")
+    spec, info = backend.build_launch(lay, cfg, rec, {"gpu": {}, "cpu": {}}, lay.logs_dir)
+    assert arg(spec.argv, "-c") == "4096" and arg(spec.argv, "-np") == "1" and "--kv-unified" not in spec.argv
+
+    # the user's own choice wins (clamped to 1..8)
+    cfg.set("models.parallel", "3")
+    spec, info = backend.build_launch(lay, cfg, rec, {"gpu": {}, "cpu": {}}, lay.logs_dir)
+    assert arg(spec.argv, "-np") == "3" and "--kv-unified" in spec.argv
+    assert cfg.set("models.parallel", "auto") is None
+    assert backend.pick_parallel(False, 4096, 50) == 8
