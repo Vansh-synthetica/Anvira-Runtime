@@ -266,6 +266,34 @@ def test_build_launch_flags_and_missing_binary(tmp_path, fake_llama):
     assert "-ngl" not in spec.argv and info["gpu"] is False
 
 
+def test_speculative_only_on_full_gpu_and_supported_binary(tmp_path, fake_llama, monkeypatch):
+    lay = resolve_layout({"ANVIRA_RUNTIME_HOME": str(tmp_path / "h")}, "linux").ensure()
+    cfg = RuntimeConfig.load(lay)
+    m = tmp_path / "m.gguf"
+    make_gguf(m)
+    rec = {"id": "m", "path": str(m)}
+    hw_gpu = {"gpu": {"backend": "cuda", "vram_total_mib": 24000, "vram_free_mib": 20000}, "cpu": {"optimal_threads": 8}}
+    cfg.set("models.llama_server_path", str(fake_llama))
+    monkeypatch.setattr(backend, "supports_speculative", lambda b: True)
+    spec, info = backend.build_launch(lay, cfg, rec, hw_gpu, lay.logs_dir)
+    assert "--spec-type" in spec.argv and info["speculative"] == "ngram-simple"
+    cfg.set("models.gpu", "off")   # CPU: measured ~2x slower with speculation, so auto leaves it off
+    spec, info = backend.build_launch(lay, cfg, rec, hw_gpu, lay.logs_dir)
+    assert "--spec-type" not in spec.argv and info["speculative"] is None
+    cfg.set("models.gpu", "auto")
+    cfg.set("models.speculative", "off")
+    spec, info = backend.build_launch(lay, cfg, rec, hw_gpu, lay.logs_dir)
+    assert "--spec-type" not in spec.argv
+    cfg.set("models.speculative", "auto")
+    monkeypatch.setattr(backend, "supports_speculative", lambda b: False)   # an older build would refuse the flags
+    spec, info = backend.build_launch(lay, cfg, rec, hw_gpu, lay.logs_dir)
+    assert "--spec-type" not in spec.argv
+
+
+def test_supports_speculative_reads_help(tmp_path):
+    assert backend.supports_speculative(tmp_path / "missing.exe") is False
+
+
 # -------------------------------------------------------------------- catalog
 def test_catalog_is_well_formed():
     cat = load_catalog()

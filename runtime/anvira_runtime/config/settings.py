@@ -41,6 +41,7 @@ DEFAULTS: dict[str, Any] = {
         "context_size": None,         # None = pick automatically
         "parallel": None,             # llama-server slots; None = pick automatically (1, 2 or 4)
         "gpu": "auto",                # auto | off | on
+        "speculative": "auto",        # n-gram speculative decoding: auto (model fully on a GPU) | off | on
         "llama_server_path": None,    # explicit llama-server binary
         "huggingface_endpoint": "https://huggingface.co",
         "allow_downloads": True,
@@ -62,6 +63,7 @@ DEFAULTS: dict[str, Any] = {
 
 _ENUMS = {
     "models.gpu": {"auto", "off", "on"},
+    "models.speculative": {"auto", "off", "on"},
     "memory.default_scope": {"app", "shared"},
     "logging.level": {"DEBUG", "INFO", "WARNING", "ERROR"},
 }

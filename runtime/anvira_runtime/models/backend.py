@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,39 @@ def find_llama_server(layout: RuntimeLayout, config: RuntimeConfig, prefer_cuda:
     if on_path:
         return Path(on_path), "unknown", searched
     return None, "none", searched
+
+
+# N-gram ("prompt lookup") speculative decoding: llama-server guesses the next tokens by finding the last 3 written
+# tokens earlier in the prompt or answer and proposing the 24 that followed; the model checks them in one batch.
+# Study items, notes chat and rewrites copy whole phrases from the notes they are given, so many guesses are right.
+# Measured 2026-11-24 with Anvira Notes' real flashcard prompts, Llama 3.2 3B Q4_K_M, RTX 3050 4 GB, temperature 0:
+# GPU 19.5 s -> 11.4 s (one request) and 11.7 s -> 7.3 s (three at once); quiz prompts even (19.4 vs 19.4 s).
+# On the CPU the same flags made it ~2x SLOWER (31 s -> 57 s): checking a draft costs as much as writing it there.
+SPECULATIVE_ARGS = ["--spec-type", "ngram-simple", "--spec-ngram-simple-size-n", "3", "--spec-ngram-simple-size-m", "24"]
+_flag_cache: dict[tuple[str, int, int], str] = {}
+
+
+def _help_text(binary: Path) -> str:
+    """``llama-server --help`` output (cached per binary file), '' when it cannot be run."""
+    try:
+        st = binary.stat()
+        key = (str(binary), int(st.st_mtime), st.st_size)
+    except OSError:
+        return ""
+    if key not in _flag_cache:
+        try:
+            r = subprocess.run([str(binary), "--help"], capture_output=True, text=True, timeout=15, cwd=str(binary.parent),
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            _flag_cache[key] = (r.stdout or "") + (r.stderr or "")
+        except (OSError, subprocess.SubprocessError, ValueError):
+            _flag_cache[key] = ""
+    return _flag_cache[key]
+
+
+def supports_speculative(binary: Path) -> bool:
+    """Older or custom llama-server builds do not know these flags and would refuse to start with them."""
+    help_text = _help_text(binary)
+    return "--spec-type" in help_text and "ngram-simple" in help_text
 
 
 def compute_gpu_layers(model_path: Path, vram_total_mib: int, context: int, meta: dict | None) -> int:
@@ -158,6 +192,13 @@ def build_launch(layout: RuntimeLayout, config: RuntimeConfig, model: dict[str, 
     if parallel > 1:
         argv += ["--kv-unified"]   # every slot may use the full context; without it each gets ctx / np
     argv += ["-t", str(threads), "-b", "512"]
+    spec_mode = config.get("models.speculative") or "auto"
+    n_layer = (meta or {}).get("n_layer") or 32
+    want_spec = spec_mode == "on" or (spec_mode == "auto" and use_cuda and layers >= n_layer)
+    speculative = want_spec and supports_speculative(binary)
+    if speculative:
+        argv += SPECULATIVE_ARGS
+    info["speculative"] = "ngram-simple" if speculative else None
 
     info.update({"port": port, "context": ctx, "gpu_layers": layers if use_cuda else 0, "parallel": parallel,
                  "gpu": use_cuda, "threads": threads, "architecture": (meta or {}).get("architecture")})
