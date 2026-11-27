@@ -91,6 +91,8 @@ and registered apps are kept; apps reconnect on their own.
 
 `anvira config list` shows every key; the important ones: `api.port` (default 47615, `0` = pick a free port), `models.models_dir`, `models.extra_dirs`,
 `models.discover_apps`, `models.gpu` (`auto|off|on`), `models.context_size`, `models.llama_server_path`, `lifecycle.*`, `services.python`, `supervisor.*`.
+`models.memory_guard` (default `true`) refuses to load a model that would not fit in the system memory that is free at that
+moment, keeping about 1 GB (or 6% of RAM) for Windows and the apps in use; set it to `false` to load anyway.
 Secrets are never in `config.json`.
 
 ## Troubleshooting

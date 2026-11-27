@@ -51,3 +51,12 @@ def service_unavailable(name: str, detail: str = "") -> RuntimeApiError:
         f"{name}_unavailable", f"The {name.upper() if name == 'orcha' else name.capitalize()} "
         f"subsystem is not available.{(' ' + detail) if detail else ''}", 503,
         hint="Run `anvira doctor` for diagnostics and `anvira runtime logs --service " + name + "`.")
+
+
+def not_enough_memory(model_id: str, info: dict[str, Any]) -> RuntimeApiError:
+    """The model would not fit in the system memory that is free: loading it anyway freezes the PC."""
+    return RuntimeApiError(
+        "not_enough_memory", info.get("error") or f"Not enough free memory to load '{model_id}'.", 507,
+        hint="Close apps you are not using (browser tabs, games, calls) and try again, or pick a smaller model. "
+             "To load it anyway: `anvira config set models.memory_guard false`.",
+        details={k: info[k] for k in ("ram_needed_mib", "ram_free_mib") if k in info})

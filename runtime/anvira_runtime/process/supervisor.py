@@ -108,6 +108,9 @@ class ServiceSpec:
     health_headers: dict[str, str] = field(default_factory=dict)
     ready_timeout_s: float = 60.0
     restart: bool = True
+    restart_limit: int | None = None            # restarts allowed per window for this service (None = supervisor default)
+    restart_when_unhealthy: bool = True         # False: only a process that died is restarted, a busy one is left alone
+    low_priority: bool = False                  # run below normal priority so the desktop always wins the CPU
     kind: str = "service"                       # service | model
     meta: dict[str, Any] = field(default_factory=dict)
 
@@ -240,6 +243,8 @@ class Supervisor:
         kwargs: dict[str, Any] = {}
         if sys.platform == "win32":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+            if spec.low_priority:
+                kwargs["creationflags"] |= subprocess.BELOW_NORMAL_PRIORITY_CLASS
         else:
             kwargs["start_new_session"] = True
         try:
@@ -251,6 +256,11 @@ class Supervisor:
         finally:
             if spec.log_path:
                 log_fh.close()  # type: ignore[union-attr]
+        if spec.low_priority and sys.platform != "win32":
+            try:
+                os.setpriority(os.PRIO_PROCESS, st.proc.pid, 10)
+            except (OSError, AttributeError):
+                pass
         st.pid, st.adopted, st.started_at = st.proc.pid, False, time.time()
         self._record_child(st)
 
@@ -349,8 +359,8 @@ class Supervisor:
             st.state = "running"
             return
         st.consecutive_failures += 1
-        if not dead and st.consecutive_failures < 3:
-            st.state = "degraded"
+        if not dead and (st.consecutive_failures < 3 or not st.spec.restart_when_unhealthy):
+            st.state = "degraded"   # busy (a model mid-generation can miss a probe): wait, never kill it for that
             return
         code = st.proc.returncode if st.proc else None
         st.last_error = (f"process exited (code {code})" if dead else "health checks failing")
@@ -360,10 +370,11 @@ class Supervisor:
             st.state = "failed"
             return
         now = time.time()
+        limit = st.spec.restart_limit if st.spec.restart_limit is not None else self.restart_limit
         st.restarts = [t for t in st.restarts if now - t < self.restart_window_s]
-        if len(st.restarts) >= self.restart_limit:
+        if len(st.restarts) >= limit:
             st.state = "failed"
-            st.last_error += f"; gave up after {self.restart_limit} restarts in {self.restart_window_s:.0f}s"
+            st.last_error += f"; gave up after {limit} restart(s) in {self.restart_window_s:.0f}s"
             return
         st.restarts.append(now)
         st.total_restarts += 1
@@ -373,7 +384,7 @@ class Supervisor:
         try:
             await self.restart(name)
         except RuntimeError as exc:
-            st.state, st.last_error = "failed" if len(st.restarts) >= self.restart_limit else "degraded", str(exc)
+            st.state, st.last_error = "failed" if len(st.restarts) >= limit else "degraded", str(exc)
 
     def status(self) -> dict[str, dict[str, Any]]:
         return {n: s.public() for n, s in self.services.items()}

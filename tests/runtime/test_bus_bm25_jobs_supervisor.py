@@ -324,6 +324,56 @@ def test_supervisor_no_restart_when_disabled(tmp_path, svc):
     run(scenario())
 
 
+def _priority_is_low(pid):
+    if sys.platform == "win32":
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, pid)            # PROCESS_QUERY_LIMITED_INFORMATION
+        try:
+            return k32.GetPriorityClass(h) == 0x4000       # BELOW_NORMAL_PRIORITY_CLASS
+        finally:
+            k32.CloseHandle(h)
+    return os.getpriority(os.PRIO_PROCESS, pid) > 0
+
+
+def test_supervisor_model_style_spec_low_priority_one_restart_and_busy_is_not_killed(tmp_path, svc):
+    """1.0.4: a model runs below normal priority, is never killed for missing health checks while alive, and is
+    restarted at most once if it dies (each reload re-reads gigabytes and can freeze a small PC)."""
+    async def scenario():
+        s = sup(tmp_path, restart_limit=5, restart_window_s=60)
+        spec = svc()
+        spec.low_priority, spec.restart_limit, spec.restart_when_unhealthy = True, 1, False
+        s.add(spec)
+        st = await s.start("svc")
+        assert _priority_is_low(st.pid)
+        s.start_monitor()
+        # alive but not answering (busy): stays put, no restart
+        first, good_url = st.pid, spec.health_url
+        spec.health_url = f"http://127.0.0.1:{free_port()}/"
+        for _ in range(120):                         # past the 3 failed probes that restart an ordinary service
+            await asyncio.sleep(0.25)                # (a refused connection takes ~2 s on Windows)
+            if st.consecutive_failures >= 4:
+                break
+        assert st.consecutive_failures >= 4 and st.pid == first and pid_alive(first) and st.total_restarts == 0 and st.state == "degraded"
+        spec.health_url = good_url
+        # dies: one restart (still low priority) ...
+        subprocess_kill(first)
+        for _ in range(80):
+            await asyncio.sleep(0.25)
+            if st.state == "running" and st.pid != first:
+                break
+        assert st.total_restarts == 1 and st.pid != first and _priority_is_low(st.pid)
+        # ... and dying again gives up instead of reloading again
+        subprocess_kill(st.pid)
+        for _ in range(60):
+            await asyncio.sleep(0.25)
+            if st.state == "failed":
+                break
+        assert st.state == "failed" and st.total_restarts == 1 and "gave up after 1 restart" in (st.last_error or "")
+        await s.stop_all()
+    run(scenario())
+
+
 def test_supervisor_adopts_healthy_existing_service_and_never_kills_it(tmp_path, svc):
     async def scenario():
         spec = svc()

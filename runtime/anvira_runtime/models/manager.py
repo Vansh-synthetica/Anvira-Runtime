@@ -13,7 +13,7 @@ from typing import Any, Awaitable, Callable
 
 from ..config.paths import RuntimeLayout
 from ..config.settings import RuntimeConfig
-from ..core.errors import RuntimeApiError, no_model
+from ..core.errors import RuntimeApiError, no_model, not_enough_memory
 from ..core.jobs import Job
 from ..hardware import detect_hardware, disk_info
 from ..process.supervisor import Supervisor, tail_file
@@ -44,6 +44,7 @@ class ModelManager:
         self._loading_id: str | None = None
         self._cancel_events: dict[str, asyncio.Event] = {}
         self.last_backend_info: dict[str, Any] = {}
+        self.last_load_error: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------ hardware
     def hardware(self, refresh: bool = False) -> dict[str, Any]:
@@ -144,6 +145,8 @@ class ModelManager:
                     detail["log_tail"] = tail_file(svc.spec.log_path, 10)
         return {"active": aid, "state": state, "model": rec, "backend": detail or None,
                 "backend_info": self.last_backend_info or None,
+                "load_error": (self.last_load_error if self.last_load_error and rec
+                               and self.last_load_error.get("model") == rec["id"] and state != "running" else None),
                 "models_dir": str(self.store.primary_dir), "extra_dirs": [str(d) for d in self.store.extra_dirs],
                 "installed_count": len(self.store.scan()) + len(self.providers.list())}
 
@@ -202,9 +205,12 @@ class ModelManager:
             self._log("INFO", f"model '{rec['id']}' still loading after {wait_s:.0f}s; continuing in background")
 
     async def _load(self, rec: dict[str, Any]) -> None:
+        self.last_load_error = None
         try:
-            spec, info = llama.build_launch(self.layout, self.config, rec, self.hardware(), self.layout.logs_dir)
+            spec, info = llama.build_launch(self.layout, self.config, rec, self.hardware(refresh=True), self.layout.logs_dir)
             self.last_backend_info = info
+            if spec is None and info.get("code") == "not_enough_memory":
+                raise not_enough_memory(rec["id"], info)
             if spec is None:
                 raise RuntimeApiError(
                     "backend_missing", "The llama.cpp inference backend (llama-server) was not found.", 424,
@@ -225,9 +231,11 @@ class ModelManager:
                 except Exception:  # noqa: BLE001
                     pass
                 self.supervisor.remove(spec.name)
-                spec, info = llama.build_launch(self.layout, self.config, rec, self.hardware(), self.layout.logs_dir, force_cpu=True)
+                spec, info = llama.build_launch(self.layout, self.config, rec, self.hardware(refresh=True), self.layout.logs_dir, force_cpu=True)
                 info["fallback"] = "the GPU backend failed to start; running on the CPU"
                 self.last_backend_info = info
+                if spec is None and info.get("code") == "not_enough_memory":
+                    raise not_enough_memory(rec["id"], info) from exc
                 if spec is None:
                     raise RuntimeApiError("model_start_failed", f"Model '{rec['id']}' failed to start on the GPU and no CPU backend was found.", 500,
                                           hint="Run `anvira doctor`; update the NVIDIA driver or reinstall the runtime.") from exc
@@ -237,6 +245,9 @@ class ModelManager:
                 except RuntimeError as exc2:
                     raise RuntimeApiError("model_start_failed", f"Model '{rec['id']}' failed to start: {exc2}", 500,
                                           hint="See `anvira runtime logs --service " + spec.name + "`.") from exc2
+        except RuntimeApiError as exc:
+            self.last_load_error = {"model": rec["id"], "code": exc.code, "message": exc.message, "hint": exc.hint}
+            raise
         finally:
             self._loading_id = None
 

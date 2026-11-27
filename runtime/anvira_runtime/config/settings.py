@@ -42,6 +42,7 @@ DEFAULTS: dict[str, Any] = {
         "parallel": None,             # llama-server slots; None = pick automatically (1, 2 or 4)
         "gpu": "auto",                # auto | off | on
         "speculative": "auto",        # n-gram speculative decoding: auto (model fully on a GPU) | off | on
+        "memory_guard": True,         # refuse to load a model that does not fit in the FREE system memory
         "llama_server_path": None,    # explicit llama-server binary
         "huggingface_endpoint": "https://huggingface.co",
         "allow_downloads": True,

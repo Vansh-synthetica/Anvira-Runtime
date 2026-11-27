@@ -235,7 +235,8 @@ def test_gguf_metadata_reader(tmp_path):
 def test_gpu_layer_heuristic_matches_anvira_launcher(tmp_path):
     f = tmp_path / "m.gguf"
     make_gguf(f)
-    f.write_bytes(f.read_bytes() + b"\0" * (4400 * 1024 * 1024 - f.stat().st_size))   # ~4.4 GiB model
+    with open(f, "r+b") as fh:                 # ~4.4 GiB model (only st_size is read: no gigabytes written)
+        fh.truncate(4400 * 1024 * 1024)
     meta = gguf.read_metadata(f)
     layers = backend.compute_gpu_layers(f, 4096, 4096, meta)
     assert 0 < layers < 32                       # partial offload on a 4 GiB card, like the Electron app
@@ -419,7 +420,7 @@ def test_a_failing_cuda_backend_falls_back_to_the_cpu_build(tmp_path, fake_llama
             pass
     mgr = ModelManager.__new__(ModelManager)
     mgr.layout, mgr.config, mgr.supervisor, mgr._log, mgr._loading_id, mgr.last_backend_info = lay, cfg, Sup(), lambda lv, msg: logs.append((lv, msg)), None, {}
-    mgr.hardware = lambda: hw
+    mgr.hardware = lambda refresh=False: hw
     cfg.set("models.llama_server_path", str(fake_llama))
     asyncio.run(mgr._load({"id": "m", "path": str(m)}))
     assert started == [("add", True), ("add", False)]                                # GPU first, then CPU
@@ -456,3 +457,111 @@ def test_parallel_slots_share_one_kv_pool(tmp_path, fake_llama):
     assert arg(spec.argv, "-np") == "3" and "--kv-unified" in spec.argv
     assert cfg.set("models.parallel", "auto") is None
     assert backend.pick_parallel(False, 4096, 50) == 8
+
+
+# ------------------------------------------------- 1.0.4: a model must never freeze the PC
+def _sized(tmp_path, mib, n_layer=32):
+    f = tmp_path / f"m{mib}.gguf"
+    make_gguf(f, n_layer)
+    with open(f, "r+b") as fh:                       # only the size matters (st_size): no gigabytes written
+        fh.truncate(mib * 1024 * 1024)
+    return f
+
+
+def test_kv_cache_counts_every_layer():
+    meta = {"n_layer": 32, "n_head_kv": 8, "n_embd": 4096, "n_head": 32}
+    # Llama-3-8B shape at 16k tokens, q8_0: about 1 GiB (the old formula said 8 MiB)
+    assert 1000 < backend.kv_cache_mib(meta, 16384, backend.KV_BYTES_GPU) < 1200
+    assert backend.kv_cache_mib(meta, 4096, backend.KV_BYTES_CPU) == 512
+
+
+def test_gpu_share_comes_from_free_vram_with_room_for_the_desktop():
+    assert backend.usable_vram_mib({"vram_total_mib": 4096, "vram_free_mib": 1500}) == 732     # Discord etc. use the rest
+    assert backend.usable_vram_mib({"vram_total_mib": 4096, "vram_free_mib": 600}) == 0
+    assert backend.usable_vram_mib({"vram_total_mib": 24576, "vram_free_mib": 24000}) == int(24000 - 24576 * 0.10)
+    assert backend.usable_vram_mib({"vram_total_mib": 8192, "vram_free_mib": None}) == int(8192 * 0.7 - 8192 * 0.10)
+    assert backend.usable_vram_mib({}) == 0
+
+
+def test_busy_small_card_gets_few_or_no_layers(tmp_path, fake_llama):
+    lay = resolve_layout({"ANVIRA_RUNTIME_HOME": str(tmp_path / "h")}, "linux").ensure()
+    cfg = RuntimeConfig.load(lay)
+    cfg.set("models.llama_server_path", str(fake_llama))
+    m = _sized(tmp_path, 4400)
+    rec = {"id": "m", "path": str(m)}
+    ram = {"total_mib": 32768, "free_mib": 24000}
+    # a 4 GiB card that a call/browser already half uses: nothing goes on it (CPU instead of a stalled desktop)
+    hw = {"gpu": {"backend": "cuda", "vram_total_mib": 4096, "vram_free_mib": 1800}, "cpu": {"optimal_threads": 8}, "ram": ram}
+    spec, info = backend.build_launch(lay, cfg, rec, hw, lay.logs_dir)
+    assert info["gpu"] is False and "-ngl" not in spec.argv
+    # the same card idle: a partial offload that leaves the desktop its share
+    hw["gpu"]["vram_free_mib"] = 3900
+    spec, info = backend.build_launch(lay, cfg, rec, hw, lay.logs_dir)
+    layers = info["gpu_layers"]
+    assert 0 < layers < 32
+    used = layers * 4400 / 32 + backend.kv_cache_mib(gguf.read_metadata(m), info["context"], backend.KV_BYTES_GPU) + backend.GPU_WORK_MIB
+    assert used <= backend.usable_vram_mib(hw["gpu"])
+
+
+def test_memory_guard_shrinks_context_then_refuses(tmp_path, fake_llama):
+    lay = resolve_layout({"ANVIRA_RUNTIME_HOME": str(tmp_path / "h")}, "linux").ensure()
+    cfg = RuntimeConfig.load(lay)
+    cfg.set("models.llama_server_path", str(fake_llama))
+    m = _sized(tmp_path, 4400)
+    rec = {"id": "m", "path": str(m)}
+    cpu = {"optimal_threads": 6, "logical_cores": 8}
+    meta = gguf.read_metadata(m)
+    # plenty free: 8k context on the CPU
+    spec, info = backend.build_launch(lay, cfg, rec, {"gpu": {}, "cpu": cpu, "ram": {"total_mib": 16384, "free_mib": 12000}}, lay.logs_dir)
+    assert spec and info["context"] == 8192
+    # 8k does not fit but 4k does: fall back to 4k rather than refuse
+    free = int(backend.host_ram_needed_mib(4400, meta, 4096, 0, False) + backend.ram_headroom_mib(16384) + 100)
+    spec, info = backend.build_launch(lay, cfg, rec, {"gpu": {}, "cpu": cpu, "ram": {"total_mib": 16384, "free_mib": free}}, lay.logs_dir)
+    assert spec and info["context"] == 4096
+    # an 8 GB laptop with a call and a browser open: refuse with a clear reason instead of freezing the PC
+    small = {"gpu": {}, "cpu": cpu, "ram": {"total_mib": 8192, "free_mib": 3500}}
+    spec, info = backend.build_launch(lay, cfg, rec, small, lay.logs_dir)
+    assert spec is None and info["code"] == "not_enough_memory" and "free" in info["error"]
+    # the user can switch the guard off
+    cfg.set("models.memory_guard", "false")
+    spec, info = backend.build_launch(lay, cfg, rec, small, lay.logs_dir)
+    assert spec is not None
+    # unknown memory (detection failed): never block on a guess
+    cfg.set("models.memory_guard", "true")
+    spec, info = backend.build_launch(lay, cfg, rec, {"gpu": {}, "cpu": cpu}, lay.logs_dir)
+    assert spec is not None
+
+
+def test_model_leaves_cores_free_and_runs_low_priority(tmp_path, fake_llama):
+    lay = resolve_layout({"ANVIRA_RUNTIME_HOME": str(tmp_path / "h")}, "linux").ensure()
+    cfg = RuntimeConfig.load(lay)
+    cfg.set("models.llama_server_path", str(fake_llama))
+    m = tmp_path / "m.gguf"
+    make_gguf(m)
+    rec = {"id": "m", "path": str(m)}
+    arg = lambda a, flag: a[a.index(flag) + 1]
+    for logical, want in ((4, "2"), (8, "6"), (16, "12"), (2, "1")):
+        hw = {"gpu": {}, "cpu": {"optimal_threads": max(1, int(logical * 0.75)), "logical_cores": logical}}
+        spec, _ = backend.build_launch(lay, cfg, rec, hw, lay.logs_dir)
+        assert arg(spec.argv, "-t") == want, (logical, arg(spec.argv, "-t"))
+    assert spec.low_priority and spec.restart_limit == 1 and spec.restart_when_unhealthy is False
+
+
+def test_not_enough_memory_is_its_own_error_and_shows_in_status(tmp_path, fake_llama):
+    import asyncio
+    from anvira_runtime.models.manager import ModelManager
+    from anvira_runtime.process.supervisor import Supervisor
+    lay = resolve_layout({"ANVIRA_RUNTIME_HOME": str(tmp_path / "h")}, "linux").ensure()
+    cfg = RuntimeConfig.load(lay)
+    cfg.set("models.llama_server_path", str(fake_llama))
+    m = _sized(tmp_path, 4400)
+    mgr = ModelManager(lay, cfg, Supervisor(tmp_path / "children.json"))
+    mgr.hardware = lambda refresh=False: {"gpu": {}, "cpu": {"optimal_threads": 6, "logical_cores": 8},
+                                          "ram": {"total_mib": 8192, "free_mib": 3000}}
+    rec = {"id": "m", "kind": "local", "path": str(m)}
+    with pytest.raises(Exception) as e:
+        asyncio.run(mgr._load(rec))
+    assert getattr(e.value, "code", None) == "not_enough_memory" and e.value.status == 507
+    assert mgr.last_load_error["code"] == "not_enough_memory" and "Close apps" in mgr.last_load_error["hint"]
+    assert not any(n.startswith("model:") for n in mgr.supervisor.services)      # nothing was launched
+

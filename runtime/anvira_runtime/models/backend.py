@@ -2,8 +2,16 @@
 
 Behaviour ported from Anvira's ``electron/llamaServer.cjs``: same flags
 (``--jinja``, flash-attention + q8_0 KV cache on CUDA, ``-b 512``), same
-empirically-calibrated GPU-layer fill (82% of total VRAM on cards up to
-6 GiB, 90% above), same 4096-token context floor.
+4096-token context floor.
+
+A model must never take the computer down with it (1.0.4, after a tester's PC froze when the app opened with a
+Discord call running). So the launch is sized from what is FREE right now, not from what the hardware has:
+- GPU layers fit the VRAM that is free minus room for the display and other apps, with the KV cache (all layers,
+  measured in bytes) and llama.cpp's working buffers counted. Overfilling the card makes Windows spill VRAM into
+  system memory and the whole desktop stalls while only the mouse moves.
+- System memory is checked before loading: if the model will not fit in what is free (keeping room for Windows and
+  the apps in use), a smaller context is tried, then the load is refused with a clear message instead of thrashing.
+- Two logical cores are left free and the process runs at below-normal priority (supervisor ``low_priority``).
 
 Unlike the old launcher it serves several requests at once: ``-np N`` slots
 over one unified KV pool (``--kv-unified``), so an app generating a quiz in
@@ -104,38 +112,72 @@ def supports_speculative(binary: Path) -> bool:
     return "--spec-type" in help_text and "ngram-simple" in help_text
 
 
-def compute_gpu_layers(model_path: Path, vram_total_mib: int, context: int, meta: dict | None) -> int:
+KV_BYTES_GPU = 1.0625      # q8_0 K and V cache (--cache-type-k/v q8_0)
+KV_BYTES_CPU = 2.0         # llama.cpp's f16 default on the CPU
+GPU_WORK_MIB = 512         # CUDA context + llama.cpp compute buffers at -b 512
+HOST_WORK_MIB = 400        # llama-server itself, tokenizer, compute buffers on the CPU side
+
+
+def kv_cache_mib(meta: dict | None, context: int, bytes_per_value: float) -> float:
+    """Size of the K+V cache for ``context`` tokens across ALL layers."""
+    m = meta or {}
+    n_layer = m.get("n_layer") or 32
+    n_head_kv = m.get("n_head_kv") or 8
+    n_embd, n_head = m.get("n_embd"), m.get("n_head")
+    head_dim = (n_embd // n_head) if n_embd and n_head else 128
+    return context * n_layer * 2 * n_head_kv * head_dim * bytes_per_value / _MIB
+
+
+def usable_vram_mib(gpu: dict[str, Any]) -> int:
+    """VRAM a model may take now: what is free, minus room for the display and the apps already using the card."""
+    total = gpu.get("vram_total_mib") or 0
+    if not total:
+        return 0
+    free = gpu.get("vram_free_mib")
+    if free is None:                          # not reported (non-NVIDIA query): assume the desktop already uses some
+        free = total * 0.7
+    headroom = max(768.0, total * 0.10)       # on top of what is in use now: room for a call or a browser to grow
+    return max(0, int(min(free, total) - headroom))
+
+
+def ram_headroom_mib(total_mib: int) -> float:
+    """System memory left free after loading, on top of what the apps in use already hold: Windows stays responsive
+    with about 1 GB truly available; less and it starts paging the apps on screen."""
+    return max(1024.0, total_mib * 0.06)
+
+
+def compute_gpu_layers(model_path: Path, vram_mib: int, context: int, meta: dict | None) -> int:
+    """Layers to offload into ``vram_mib`` (the USABLE VRAM, see usable_vram_mib), counting the KV cache and buffers."""
     try:
         model_mib = model_path.stat().st_size / _MIB
     except OSError:
         return 0
-    if model_mib <= 0 or not vram_total_mib:
+    if model_mib <= 0 or not vram_mib:
         return 0
     n_layer = (meta or {}).get("n_layer") or 32
     per_layer = model_mib / n_layer
-    fill = 0.82 if vram_total_mib <= 6144 else 0.90
-    n_head_kv = (meta or {}).get("n_head_kv") or 8
-    n_embd, n_head = (meta or {}).get("n_embd"), (meta or {}).get("n_head")
-    head_dim = (n_embd // n_head) if n_embd and n_head else 128
-    kv_mib = max(64.0, context * (2 * n_head_kv * head_dim) / _MIB)
-    budget = vram_total_mib * fill - kv_mib
-    if budget <= model_mib * 0.05:
+    budget = vram_mib - kv_cache_mib(meta, context, KV_BYTES_GPU) - GPU_WORK_MIB
+    if budget < per_layer * 2:                 # a layer or two on the GPU is not worth a CUDA context
         return 0
     return max(1, min(n_layer, int(budget // per_layer)))
 
 
+def host_ram_needed_mib(model_mib: float, meta: dict | None, context: int, layers_on_gpu: int, on_gpu: bool) -> float:
+    """System memory the model will occupy: the weights not on the GPU, their share of the KV cache, and buffers."""
+    n_layer = (meta or {}).get("n_layer") or 32
+    on_cpu = 1.0 - (min(layers_on_gpu, n_layer) / n_layer if on_gpu else 0.0)
+    kv = kv_cache_mib(meta, context, KV_BYTES_GPU if on_gpu else KV_BYTES_CPU)
+    return model_mib * on_cpu + kv * on_cpu + HOST_WORK_MIB
+
+
 def pick_context(meta: dict | None, free_vram_mib: int | None, requested: int | None) -> int:
-    """Requested context, else the largest of 16384/8192/4096 whose KV fits 12% of free VRAM."""
+    """Requested context, else the largest of 16384/8192/4096 whose KV cache fits 12% of the usable VRAM."""
     if requested:
         return requested
     if not free_vram_mib:
         return 4096
-    n_head_kv = (meta or {}).get("n_head_kv") or 8
-    n_embd, n_head = (meta or {}).get("n_embd"), (meta or {}).get("n_head")
-    head_dim = (n_embd // n_head) if n_embd and n_head else 128
-    per_tok = 2 * n_head_kv * head_dim
     for ctx in (16384, 8192, 4096):
-        if ctx * per_tok / _MIB <= free_vram_mib * 0.12:
+        if kv_cache_mib(meta, ctx, KV_BYTES_GPU) <= free_vram_mib * 0.12:
             return ctx
     return 4096
 
@@ -170,18 +212,50 @@ def build_launch(layout: RuntimeLayout, config: RuntimeConfig, model: dict[str, 
 
     path = Path(model["path"])
     meta = gguf.read_metadata(path)
-    use_cuda = cuda_ok and variant in ("cuda", "custom", "unknown")
+    want_cuda = cuda_ok and variant in ("cuda", "custom", "unknown")
+    vram = usable_vram_mib(gpu) if want_cuda else 0
     requested_ctx = config.get("models.context_size")
-    ctx = pick_context(meta, gpu.get("vram_free_mib") if use_cuda else None, requested_ctx)
+
+    def size(ctx_: int) -> tuple[int, bool]:
+        layers_ = compute_gpu_layers(path, vram, ctx_, meta) if want_cuda else 0
+        return layers_, want_cuda and layers_ > 0
+
+    ctx = pick_context(meta, vram or None, requested_ctx)
+    layers, use_cuda = size(ctx)
     if not use_cuda and not requested_ctx:
         # On the CPU the KV cache lives in system RAM, where 8k tokens of a small model is a few hundred MiB:
-        # cheap room for two prompts at once instead of one.
+        # cheap room for two prompts at once instead of one (the memory check below takes it back if it won't fit).
         ctx = max(ctx, 8192)
-    layers = compute_gpu_layers(path, gpu.get("vram_total_mib") or 0, ctx, meta) if use_cuda else 0
-    use_cuda = use_cuda and layers > 0
+
+    # Will it fit in the system memory that is free right now? If not, try the smallest context, then refuse:
+    # loading anyway pushes Windows into the page file and the whole PC stops responding.
+    ram = hardware.get("ram") or {}
+    ram_free, ram_total = ram.get("free_mib") or 0, ram.get("total_mib") or 0
+    try:
+        model_mib = path.stat().st_size / _MIB
+    except OSError:
+        model_mib = 0.0
+    if config.get("models.memory_guard") and ram_free and model_mib:
+        room = ram_free - ram_headroom_mib(ram_total or ram_free)
+        need = host_ram_needed_mib(model_mib, meta, ctx, layers, use_cuda)
+        if need > room and not requested_ctx and ctx > 4096:
+            ctx = 4096
+            layers, use_cuda = size(ctx)
+            need = host_ram_needed_mib(model_mib, meta, ctx, layers, use_cuda)
+        info.update({"ram_needed_mib": round(need), "ram_free_mib": ram_free})
+        if need > room:
+            info["code"] = "not_enough_memory"
+            info["error"] = (f"Not enough free memory to load this model: it needs about {need / 1024:.1f} GB "
+                             f"and {ram_free / 1024:.1f} GB is free, with "
+                             f"{ram_headroom_mib(ram_total or ram_free) / 1024:.1f} GB kept for Windows and your apps.")
+            return None, info
     parallel = pick_parallel(use_cuda, ctx, config.get("models.parallel"))
 
-    threads = hardware.get("cpu", {}).get("optimal_threads") or 4
+    cpu = hardware.get("cpu", {})
+    threads = cpu.get("optimal_threads") or 4
+    if cpu.get("logical_cores"):
+        threads = min(threads, cpu["logical_cores"] - 2)    # two logical cores stay free for the desktop and apps
+    threads = max(1, threads)
     if use_cuda:
         threads = max(2, threads // 2)
     port = free_port()
@@ -205,6 +279,9 @@ def build_launch(layout: RuntimeLayout, config: RuntimeConfig, model: dict[str, 
     spec = ServiceSpec(
         name=f"model:{model['id']}", argv=argv, cwd=str(binary.parent), log_path=logs_dir / f"model-{model['id']}.log",
         port=port, health_url=f"http://127.0.0.1:{port}/health", ready_timeout_s=600.0, restart=True,
+        # a busy model can miss health checks: never kill and reload it for that, and if it really dies restart it
+        # once, not five times (each reload re-reads gigabytes); it runs below normal priority so the PC stays usable
+        restart_limit=1, restart_when_unhealthy=False, low_priority=True,
         kind="model", meta={"model_id": model["id"], "context": ctx, "gpu_layers": info["gpu_layers"],
                             "parallel": parallel, "variant": variant})
     return spec, info
